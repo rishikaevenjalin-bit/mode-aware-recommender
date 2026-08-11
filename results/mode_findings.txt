@@ -31,3 +31,9 @@ ACCLAIM ABLATION FINDINGS (RQ3):
 Ablation 1: top-10 acclaim rises 0.029 (hybrid only) -> 0.507 (with acclaim). Acclaim component clearly improves acclaimed-artist discovery. RQ3 supported.
 Ablation 2: acclaim rises smoothly with mode_weight then plateaus at w=0.5 for most users (nothing more acclaimed left in pool to promote). Justifies mode_weight=0.5 default.
 Caveat: users with few acclaimed artists in taste pool (user 20) cap lower - bounded by taste.
+
+60-USER EVALUATION (report-grade):
+Precision@10: baseline 0.463, focus 0.267, energy 0.218, insp 0.210 (expected trade-off).
+Mood-Match Focus: 0.794 vs baseline 0.545 (+0.249, strong). Energy: 0.963 vs baseline 0.964 (no lift - dataset popular tracks already highly energetic, no headroom).
+KEY INSIGHT: mode-aware gains large where target diverges from default listening (Focus), negligible where default already aligns (Energy).
+Diversity flat ~1.19-1.21 (modes preserve variety).
