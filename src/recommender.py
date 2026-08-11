@@ -56,8 +56,41 @@ def generate_candidates(user_idx, alpha=0.5, n_candidates=150):
     df = df.dropna(subset=_features)
     df = df.sort_values("hybrid_score", ascending=False).head(n_candidates)
     return df.reset_index(drop=True)
+    print(cands[["name", "artist", "hybrid_score"]].head(10).to_string())
+
+
+def generate_candidates_from_artists(seed_artists, n_candidates=150):
+    """Cold-start: build a taste profile from chosen artists, return candidate pool.
+    Used for new app visitors who have no listening history."""
+    # Find all tracks by the seed artists
+    seed_rows = _music[_music["artist"].isin(seed_artists)]
+    if seed_rows.empty:
+        return pd.DataFrame()
+
+    # Build taste profile: average audio features of seed artists' tracks
+    seed_track_ids = seed_rows["track_id"].tolist()
+    seed_feat_rows = [_cid_to_row[t] for t in seed_track_ids if t in _cid_to_row]
+    if not seed_feat_rows:
+        return pd.DataFrame()
+    user_profile = _feat[seed_feat_rows].mean(axis=0)
+
+    # Score every track by similarity to the taste profile
+    sims = cosine_similarity([user_profile], _feat)[0]
+
+    df = _music.copy().reset_index(drop=True)
+    # align sims to music rows via track_id order in content model
+    sim_by_tid = {tid: sims[i] for i, tid in enumerate(_cb["track_ids"])}
+    df["hybrid_score"] = df["track_id"].map(sim_by_tid).fillna(0.0)
+
+    # Drop the seed artists' own tracks so we recommend NEW music, not their picks
+    df = df[~df["artist"].isin(seed_artists)]
+    df = df.dropna(subset=_features)
+    df = df.sort_values("hybrid_score", ascending=False).head(n_candidates)
+    return df.reset_index(drop=True)
+
 
 if __name__ == "__main__":
-    cands = generate_candidates(0)
-    print("Generated", len(cands), "candidates for user 0")
-    print(cands[["name", "artist", "hybrid_score"]].head(10).to_string())
+    print("\nCold-start test - seed artists: Radiohead, Coldplay")
+    c = generate_candidates_from_artists(["Radiohead", "Coldplay"])
+    print("Generated", len(c), "candidates")
+    print(c[["name", "artist", "hybrid_score"]].head(10).to_string())
