@@ -1,1 +1,1 @@
-# music-intent-recommender
+# mode-aware-recommender
