@@ -4,3 +4,9 @@ __pycache__/
 .streamlit/secrets.toml
 data/raw/
 .env
+
+data/processed/
+*.pkl
+
+data/processed/
+*.pkl
