@@ -26,3 +26,8 @@ Focus ranking scores 0.775 on Focus target vs baseline 0.570 (+0.205 lift).
 Energy ranking scores 0.970 on Energy target (highest cell), beating baseline 0.942.
 Modes pull opposite: Focus lowers energy-target score, Energy lowers focus-target score.
 Proves RQ1 (mode-appropriateness) and RQ2 (distinct experiences). Energy lift smaller because dataset popular tracks already skew energetic.
+
+ACCLAIM ABLATION FINDINGS (RQ3):
+Ablation 1: top-10 acclaim rises 0.029 (hybrid only) -> 0.507 (with acclaim). Acclaim component clearly improves acclaimed-artist discovery. RQ3 supported.
+Ablation 2: acclaim rises smoothly with mode_weight then plateaus at w=0.5 for most users (nothing more acclaimed left in pool to promote). Justifies mode_weight=0.5 default.
+Caveat: users with few acclaimed artists in taste pool (user 20) cap lower - bounded by taste.
