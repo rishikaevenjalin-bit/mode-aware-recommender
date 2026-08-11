@@ -12,3 +12,8 @@ INSPIRATION MODE FINDING:
 Inspiration surfaces acclaimed artists (Eminem, Foo Fighters, Coldplay, Pixies) from within user taste pool to top.
 For user 0 (Jack Johnson listener), low-acclaim favourites drop; acclaimed in-taste artists rise.
 Demonstrates discovery-with-taste-preservation (RQ3). Three modes produce three distinct lists for same user (RQ2).
+
+PRECISION@10 FINDING (5-user sample):
+Baseline highest (avg ~0.44); modes trade precision for mode-appropriateness.
+Trade-off size depends on user taste alignment: user 20 (acclaimed taste) keeps Inspiration high (0.60); user 15 scores 0 on Energy/Inspiration (taste lacks that material).
+NOTE: rerun on 50-100 users for final report averages.
