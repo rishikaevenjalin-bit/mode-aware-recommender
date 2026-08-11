@@ -17,3 +17,6 @@ PRECISION@10 FINDING (5-user sample):
 Baseline highest (avg ~0.44); modes trade precision for mode-appropriateness.
 Trade-off size depends on user taste alignment: user 20 (acclaimed taste) keeps Inspiration high (0.60); user 15 scores 0 on Energy/Inspiration (taste lacks that material).
 NOTE: rerun on 50-100 users for final report averages.
+
+ILD FINDING (5-user sample):
+Diversity stable across modes (~1.1-1.26). Modes reorder within personalised pool without collapsing variety - no filter-bubble effect. Small per-user variation only; no strong mode-level diversity effect (report honestly).
