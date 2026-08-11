@@ -20,3 +20,9 @@ NOTE: rerun on 50-100 users for final report averages.
 
 ILD FINDING (5-user sample):
 Diversity stable across modes (~1.1-1.26). Modes reorder within personalised pool without collapsing variety - no filter-bubble effect. Small per-user variation only; no strong mode-level diversity effect (report honestly).
+
+MOOD-MATCH FINDING (headline result):
+Focus ranking scores 0.775 on Focus target vs baseline 0.570 (+0.205 lift).
+Energy ranking scores 0.970 on Energy target (highest cell), beating baseline 0.942.
+Modes pull opposite: Focus lowers energy-target score, Energy lowers focus-target score.
+Proves RQ1 (mode-appropriateness) and RQ2 (distinct experiences). Energy lift smaller because dataset popular tracks already skew energetic.
