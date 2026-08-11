@@ -3,3 +3,7 @@ Focus re-ranking is bounded by each user candidate pool audio diversity.
 User 0 (vocal/acoustic taste): Focus differentiates mainly by energy, instrumentalness near zero.
 User 10 (electronic/instrumental taste): Focus surfaces high-instrumentalness tracks (0.85-0.91) to top.
 Confirms modes preserve personal taste rather than overriding it.
+
+ENERGY MODE FINDING:
+Energy re-ranking surfaces high-energy (0.7-0.9) high-tempo (170-200bpm) tracks to top.
+For user 0, Energy list differs sharply from Focus list (same user), confirming modes produce distinct experiences (RQ2).
