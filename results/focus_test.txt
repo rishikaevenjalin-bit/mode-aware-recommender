@@ -1,0 +1,12 @@
+Top 10 FOCUS recommendations for user 0:
+                        name              artist  instrumentalness  energy  final_score
+0                   The News        Jack Johnson          0.002100  0.0818     0.792969
+1  We're Going To Be Friends        Jack Johnson          0.000000  0.3140     0.700312
+2                Bubble Toes        Jack Johnson          0.001740  0.5320     0.683848
+3        Party In The U.S.A.   The Barden Bellas          0.000000  0.3600     0.669020
+4         Inaudible Melodies        Jack Johnson          0.037700  0.2830     0.656667
+5             Fortunate Fool        Jack Johnson          0.002900  0.2670     0.653868
+6       Bottom Of the Barrel            Amos Lee          0.000000  0.3460     0.646946
+7      Symbol In My Driveway        Jack Johnson          0.117000  0.6800     0.623649
+8                  Fall Line        Jack Johnson          0.004510  0.3690     0.614766
+9         I And Love And You  The Avett Brothers          0.000053  0.3990     0.592108
