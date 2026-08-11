@@ -37,3 +37,9 @@ Precision@10: baseline 0.463, focus 0.267, energy 0.218, insp 0.210 (expected tr
 Mood-Match Focus: 0.794 vs baseline 0.545 (+0.249, strong). Energy: 0.963 vs baseline 0.964 (no lift - dataset popular tracks already highly energetic, no headroom).
 KEY INSIGHT: mode-aware gains large where target diverges from default listening (Focus), negligible where default already aligns (Energy).
 Diversity flat ~1.19-1.21 (modes preserve variety).
+
+60-USER EVALUATION (report-grade):
+Precision@10: baseline 0.463, focus 0.267, energy 0.218, insp 0.210 (expected trade-off).
+Mood-Match Focus: 0.794 vs baseline 0.545 (+0.249, strong). Energy: 0.963 vs baseline 0.964 (no lift - dataset popular tracks already highly energetic, no headroom).
+KEY INSIGHT: mode-aware gains large where target diverges from default listening (Focus), negligible where default already aligns (Energy).
+Diversity flat ~1.19-1.21 (modes preserve variety).
