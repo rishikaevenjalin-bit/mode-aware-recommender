@@ -7,3 +7,8 @@ Confirms modes preserve personal taste rather than overriding it.
 ENERGY MODE FINDING:
 Energy re-ranking surfaces high-energy (0.7-0.9) high-tempo (170-200bpm) tracks to top.
 For user 0, Energy list differs sharply from Focus list (same user), confirming modes produce distinct experiences (RQ2).
+
+INSPIRATION MODE FINDING:
+Inspiration surfaces acclaimed artists (Eminem, Foo Fighters, Coldplay, Pixies) from within user taste pool to top.
+For user 0 (Jack Johnson listener), low-acclaim favourites drop; acclaimed in-taste artists rise.
+Demonstrates discovery-with-taste-preservation (RQ3). Three modes produce three distinct lists for same user (RQ2).
