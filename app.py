@@ -17,44 +17,10 @@ MODE_THEME = {
     "Inspiration": {"accent": "#E8BCC8", "tint": "#FFF1F6", "icon": "\u2727"},
 }
 
-def inject_css(mode=None):
-    tint = MODE_THEME[mode]["tint"] if mode else "#EAF0FB"
-    accent = MODE_THEME[mode]["accent"] if mode else "#B4A7C3"
-    st.markdown(f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
-    html, body, [class*="css"] {{ font-family: 'Quicksand', sans-serif; }}
-    .stApp {{
-        background:
-            radial-gradient(circle at 15% 15%, rgba(180,167,195,0.35), transparent 45%),
-            radial-gradient(circle at 85% 20%, {accent}55, transparent 45%),
-            radial-gradient(circle at 50% 95%, rgba(232,188,200,0.4), transparent 50%),
-            linear-gradient(145deg, #EDF2FB 0%, #F3ECF7 55%, {tint} 100%);
-        background-attachment: fixed;
-    }}
-    .stApp, .stApp p, .stApp label, .stApp span, .stMarkdown,
-    [data-testid="stCaptionContainer"], .stRadio label, h1, h2, h3 {{ color: #1B2436 !important; }}
-    .block-container {{ max-width: 820px; padding-top: 2.5rem; }}
-    h1, h2, h3 {{ font-weight: 700; }}
-    .stButton > button {{
-        width: 100%; min-height: 48px; border-radius: 16px;
-        border: 1px solid rgba(255,255,255,0.6);
-        background: linear-gradient(135deg, rgba(180,167,195,0.85), rgba(232,188,200,0.85));
-        color: #ffffff !important; font-weight: 700;
-        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-        box-shadow: 0 8px 24px rgba(120,110,160,0.25), inset 0 1px 1px rgba(255,255,255,0.6);
-        transition: all 0.25s ease;
-    }}
-    .stButton > button:hover {{ transform: translateY(-2px); }}
-    .stMultiSelect > div > div, .stTextArea > div > div {{
-        border-radius: 16px !important;
-        background: rgba(255,255,255,0.45) !important;
-        border: 1px solid rgba(255,255,255,0.6) !important;
-        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    }}
-    </style>
-    """, unsafe_allow_html=True)
+from styling import inject_css as _new_css
 
+def inject_css(mode=None):
+    _new_css()
 @st.cache_data
 def load_artists():
     music = pd.read_csv("data/processed/music_clean.csv")
