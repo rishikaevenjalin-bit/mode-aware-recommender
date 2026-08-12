@@ -1,7 +1,14 @@
 import os
 
 def _load_key():
-    # Read GEMINI_API_KEY directly from .env (robust against parser quirks)
+    # 1. Streamlit secrets (deployed app)
+    try:
+        import streamlit as st
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+    # 2. .env file (local development)
     try:
         with open(".env") as f:
             for line in f:
@@ -9,6 +16,7 @@ def _load_key():
                     return line.strip().split("=", 1)[1]
     except Exception:
         pass
+    # 3. environment variable
     return os.getenv("GEMINI_API_KEY")
 
 _API_KEY = _load_key()
