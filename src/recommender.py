@@ -4,8 +4,11 @@ import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Load everything once at import
-with open("data/processed/als_model.pkl", "rb") as f:
-    _cf = pickle.load(f)
+import os
+_cf = None
+if os.path.exists("data/processed/als_model.pkl"):
+    with open("data/processed/als_model.pkl", "rb") as f:
+        _cf = pickle.load(f)
 with open("data/processed/content_model.pkl", "rb") as f:
     _cb = pickle.load(f)
 _music = pd.read_csv("data/processed/music_clean.csv").reset_index(drop=True)
