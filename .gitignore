@@ -10,3 +10,5 @@ data/processed/
 
 data/processed/
 *.pkl
+
+music_rec.db
