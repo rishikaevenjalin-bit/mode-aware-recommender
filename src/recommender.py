@@ -13,9 +13,9 @@ with open("data/processed/content_model.pkl", "rb") as f:
     _cb = pickle.load(f)
 _music = pd.read_csv("data/processed/music_clean.csv").reset_index(drop=True)
 
-_model = _cf["model"]
-_matrix = _cf["matrix"]
-_track_map = _cf["track_map"]
+_model = _cf["model"] if _cf else None
+_matrix = _cf["matrix"] if _cf else None
+_track_map = _cf["track_map"] if _cf else None
 _feat = _cb["feature_matrix"]
 _cid_to_row = {tid: i for i, tid in enumerate(_cb["track_ids"])}
 _features = _cb["features"]
