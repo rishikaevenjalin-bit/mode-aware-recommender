@@ -7,6 +7,25 @@ from src.ranking.energy import rank_energy
 from src.ranking.inspiration import rank_inspiration
 from src.explanation.explain import explain
 from src.db.database import init_db, new_session_id, save_session
+import html
+
+def song_card(rank, track, artist, energy, tempo, valence, explanation):
+    st.markdown(f"""<div class="mi-song">
+  <div class="mi-song-top">
+    <div class="mi-rank">{rank}</div>
+    <div class="mi-song-main">
+      <div class="mi-track">{html.escape(str(track))}</div>
+      <div class="mi-artist">{html.escape(str(artist))}</div>
+      <div class="mi-metrics">
+        <div class="mi-metric"><div class="mi-metric-label">Energy</div><div class="mi-metric-value">{energy:.2f}</div></div>
+        <div class="mi-metric"><div class="mi-metric-label">Tempo</div><div class="mi-metric-value">{tempo:.0f} BPM</div></div>
+        <div class="mi-metric"><div class="mi-metric-label">Valence</div><div class="mi-metric-value">{valence:.2f}</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="mi-why"><b>Why this track:</b> {html.escape(str(explanation))}</div>
+</div>""", unsafe_allow_html=True)
+
 
 st.set_page_config(page_title="MusicIntent", page_icon="music", layout="centered")
 init_db()
@@ -62,25 +81,16 @@ if st.session_state.step == "setup":
 
 elif st.session_state.step == "results":
     mode = st.session_state.mode
-    theme = MODE_THEME[mode]
     inject_css(mode)
-    st.markdown(f"<div style='text-align:center; margin-bottom:8px;'><span style='display:inline-block; padding:6px 18px; border-radius:20px; font-weight:700; font-size:14px; color:#172033; background:{theme['accent']};'>{theme['icon']} {mode.upper()}</span></div>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center; color:#536071;'>Based on: {', '.join(st.session_state.seed_artists)}</p>", unsafe_allow_html=True)
+    mode_key = mode.lower()
+    icons = {"focus": "\u25CE", "energy": "\u26A1", "inspiration": "\u2728"}
+    st.markdown(
+        f'<div style="text-align:center; margin-bottom:6px;"><span class="mi-badge {mode_key}">{icons[mode_key]} {mode.upper()}</span></div>',
+        unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; color:#5A6478;'>Based on: {', '.join(st.session_state.seed_artists)}</p>", unsafe_allow_html=True)
     for i, t in enumerate(st.session_state.recs, 1):
         expl = explain(t, mode)
-        st.markdown(f"""
-        <div style="background:linear-gradient(145deg, rgba(255,255,255,0.82), rgba(255,255,255,0.48)); border:1px solid rgba(255,255,255,0.85); border-radius:18px; padding:18px; margin-bottom:14px; box-shadow:0 5px 18px rgba(60,70,100,0.08);">
-          <div style="font-size:11px; font-weight:700; color:#7D8A9A;">#{i}</div>
-          <div style="font-size:17px; font-weight:700;">{t['name']}</div>
-          <div style="font-size:12px; color:#667085; margin-bottom:12px;">{t['artist']}</div>
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <div style="flex:1; background:rgba(255,255,255,0.55); border-radius:12px; padding:8px 6px; text-align:center;"><div style="font-size:10px; font-weight:600; color:#687384;">ENERGY</div><div style="font-size:14px; font-weight:700;">{t['energy']:.2f}</div></div>
-            <div style="flex:1; background:rgba(255,255,255,0.55); border-radius:12px; padding:8px 6px; text-align:center;"><div style="font-size:10px; font-weight:600; color:#687384;">TEMPO</div><div style="font-size:14px; font-weight:700;">{t['tempo']:.0f}</div></div>
-            <div style="flex:1; background:rgba(255,255,255,0.55); border-radius:12px; padding:8px 6px; text-align:center;"><div style="font-size:10px; font-weight:600; color:#687384;">VALENCE</div><div style="font-size:14px; font-weight:700;">{t['valence']:.2f}</div></div>
-          </div>
-          <div style="border-top:1px solid rgba(150,160,180,0.15); padding-top:10px; font-size:12px; line-height:1.5; color:#4F5B6B;"><strong>Why this was recommended</strong><br>{expl}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        song_card(i, t["name"], t["artist"], t["energy"], t["tempo"], t["valence"], expl)
     if st.button("Rate this session"):
         st.session_state.step = "feedback"
         st.rerun()
