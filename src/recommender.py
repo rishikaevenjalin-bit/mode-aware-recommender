@@ -85,6 +85,14 @@ def generate_candidates_from_artists(seed_artists, n_candidates=150):
     sim_by_tid = {tid: sims[i] for i, tid in enumerate(_cb["track_ids"])}
     df["hybrid_score"] = df["track_id"].map(sim_by_tid).fillna(0.0)
 
+    # Genre-matching: bias toward the genres of the seed artists
+    seed_genres = seed_rows["genre"].dropna().unique().tolist()
+    if seed_genres:
+        genre_matched = df[df["genre"].isin(seed_genres)]
+        # only apply if it leaves enough candidates, else fall back to all
+        if len(genre_matched) >= n_candidates:
+            df = genre_matched
+
     # Drop the seed artists' own tracks so we recommend NEW music, not their picks
     df = df[~df["artist"].isin(seed_artists)]
     df = df.dropna(subset=_features)
