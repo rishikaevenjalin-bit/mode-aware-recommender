@@ -9,7 +9,15 @@ from src.explanation.explain import explain
 from src.db.database import init_db, new_session_id, save_session
 import html
 
-def song_card(rank, track, artist, energy, tempo, valence, explanation):
+def song_card(rank, track, artist, energy, tempo, valence, explanation, spotify_id=None):
+    import urllib.parse as _up
+    _q = _up.quote(f"{track} {artist}")
+    _yurl = f"https://www.youtube.com/results?search_query={_q}"
+    _surl = f"https://open.spotify.com/search/{_q}"
+    _sl = (f'<div style="margin-top:10px;">'
+           f'<a href="{_surl}" target="_blank" style="display:inline-block;padding:6px 14px;border-radius:999px;background:#1DB954;color:#fff;text-decoration:none;font-size:0.8rem;font-weight:700;margin-right:8px;">Listen on Spotify</a>'
+           f'<a href="{_yurl}" target="_blank" style="display:inline-block;padding:6px 14px;border-radius:999px;background:#FF0000;color:#fff;text-decoration:none;font-size:0.8rem;font-weight:700;">Listen on YouTube</a>'
+           f'</div>')
     st.markdown(f"""<div class="mi-song">
   <div class="mi-song-top">
     <div class="mi-rank">{rank}</div>
@@ -24,6 +32,7 @@ def song_card(rank, track, artist, energy, tempo, valence, explanation):
     </div>
   </div>
   <div class="mi-why"><b>Why this track:</b> {html.escape(str(explanation))}</div>
+  {_sl}
 </div>""", unsafe_allow_html=True)
 
 
@@ -90,7 +99,7 @@ elif st.session_state.step == "results":
     st.markdown(f"<p style='text-align:center; color:#5A6478;'>Based on: {', '.join(st.session_state.seed_artists)}</p>", unsafe_allow_html=True)
     for i, t in enumerate(st.session_state.recs, 1):
         expl = explain(t, mode)
-        song_card(i, t["name"], t["artist"], t["energy"], t["tempo"], t["valence"], expl)
+        song_card(i, t["name"], t["artist"], t["energy"], t["tempo"], t["valence"], expl, t.get("spotify_id"))
     if st.button("Rate this session"):
         st.session_state.step = "feedback"
         st.rerun()
