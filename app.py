@@ -85,7 +85,14 @@ if st.session_state.step == "setup":
             st.session_state.mode = mode
             with st.spinner("Finding the perfect music..."):
                 cands = generate_candidates_from_artists(chosen)
-                st.session_state.recs = RANKERS[mode](cands).head(8).to_dict("records")
+                _ranked = RANKERS[mode](cands)
+                # Pin one seed-artist track near the top so users see an artist they picked
+                _seed_mask = _ranked["artist"].isin(chosen)
+                if _seed_mask.any():
+                    _seed_track = _ranked[_seed_mask].head(1)
+                    _rest = _ranked[~_ranked.index.isin(_seed_track.index)]
+                    _ranked = pd.concat([_seed_track, _rest], ignore_index=True)
+                st.session_state.recs = _ranked.head(8).to_dict("records")
             st.session_state.step = "results"
             st.rerun()
 

@@ -93,10 +93,21 @@ def generate_candidates_from_artists(seed_artists, n_candidates=150):
         if len(genre_matched) >= n_candidates:
             df = genre_matched
 
-    # Drop the seed artists' own tracks so we recommend NEW music, not their picks
+    # Set aside the single best-scoring seed-artist track to pin near the top
+    seed_own = df[df["artist"].isin(seed_artists)].dropna(subset=_features)
+    pinned = None
+    if not seed_own.empty:
+        pinned = seed_own.sort_values("hybrid_score", ascending=False).head(1)
+
+    # Drop the seed artists' own tracks from the main pool (recommend NEW music)
     df = df[~df["artist"].isin(seed_artists)]
     df = df.dropna(subset=_features)
     df = df.sort_values("hybrid_score", ascending=False).head(n_candidates)
+
+    # Pin the one seed-artist track at the top so users see an artist they picked
+    if pinned is not None:
+        df = pd.concat([pinned, df], ignore_index=True).head(n_candidates)
+
     return df.reset_index(drop=True)
 
 
