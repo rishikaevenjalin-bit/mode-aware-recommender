@@ -38,12 +38,12 @@ def _template_explanation(track, mode):
     e = track.get("energy", 0)
     t = track.get("tempo", 0)
     if mode == "Focus":
-        return f"{name} fits Focus: energy {e:.2f} and higher acousticness keep it low-distraction while matching your taste."
+        return f"{name} is a calm, gentle pick, easy to concentrate to and right in line with your taste."
     if mode == "Energy":
-        return f"{name} fits Energy: high energy {e:.2f} and tempo {t:.0f} bpm lift intensity while staying in your taste."
+        return f"{name} brings the energy up with a driving, upbeat feel to keep you moving, and it matches your taste."
     if mode == "Inspiration":
         acc = track.get("acclaim_score", 0) or 0
-        return f"{name} fits Inspiration: a critically recognised track (acclaim {acc:.2f}) aligned with your taste."
+        return f"{name} is a critically loved gem worth discovering, aligned beautifully with the artists you enjoy."
     return f"{name} matches your taste profile."
 
 
@@ -60,10 +60,12 @@ def explain(track, mode):
         f"taste_match={track.get('hybrid_score', 0):.2f}"
     )
     prompt = (
-        "You explain why a music recommendation was made. "
-        "Use ONLY the signals provided. Do NOT invent facts about the song, artist, or lyrics. "
-        "Write ONE short friendly sentence (max 25 words) on why this track fits the chosen mode "
-        "and the listener's taste, referencing the relevant signals.\n\n"
+        "You are a warm, music-loving friend explaining why a song was recommended. "
+        "Use ONLY the signals provided - never invent facts about the song, artist, lyrics, or meaning. "
+        "Write ONE natural, inviting sentence (max 25 words). Vary your phrasing - avoid starting every "
+        "explanation the same way, and avoid listing raw numbers like 'energy 0.54'. Instead describe the "
+        "feel (calm, upbeat, uplifting, mellow) and connect it to the listener's mode and taste. "
+        "Sound human and appealing, not technical.\n\n"
         f"Signals: {signals}"
     )
     try:
