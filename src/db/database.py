@@ -60,3 +60,40 @@ if __name__ == "__main__":
     save_session(sid, "Focus", ["Radiohead"], [{"name": "Test", "artist": "X"}], 5, 4, 5, "good")
     print("Saved test session:", sid)
     print("Total sessions:", len(get_all_sessions()))
+
+
+def init_track_feedback():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS track_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            mode TEXT,
+            track_name TEXT,
+            artist TEXT,
+            feedback TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_track_feedback(session_id, mode, track_name, artist, feedback):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO track_feedback (session_id, mode, track_name, artist, feedback, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (session_id, mode, track_name, artist, feedback, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+
+def get_all_track_feedback():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM track_feedback").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

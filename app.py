@@ -6,7 +6,7 @@ from src.ranking.focus import rank_focus
 from src.ranking.energy import rank_energy
 from src.ranking.inspiration import rank_inspiration
 from src.explanation.explain import explain
-from src.db.database import init_db, new_session_id, save_session
+from src.db.database import init_db, new_session_id, save_session, init_track_feedback, save_track_feedback
 import html
 
 def song_card(rank, track, artist, energy, tempo, valence, explanation, spotify_id=None):
@@ -38,6 +38,7 @@ def song_card(rank, track, artist, energy, tempo, valence, explanation, spotify_
 
 st.set_page_config(page_title="MusicIntent", page_icon="music", layout="centered")
 init_db()
+init_track_feedback()
 
 MODE_THEME = {
     "Focus":       {"accent": "#A8C9BB", "tint": "#F0F8F4", "icon": "\u25CE"},
@@ -100,6 +101,13 @@ elif st.session_state.step == "results":
     for i, t in enumerate(st.session_state.recs, 1):
         expl = explain(t, mode)
         song_card(i, t["name"], t["artist"], t["energy"], t["tempo"], t["valence"], expl, t.get("spotify_id"))
+        _c1, _c2, _ = st.columns([1, 1, 4])
+        if _c1.button("Like", key=f"like_{i}"):
+            save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "like")
+            st.toast("Liked " + t["name"])
+        if _c2.button("Dislike", key=f"dislike_{i}"):
+            save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "dislike")
+            st.toast("Noted")
     if st.button("Rate this session"):
         st.session_state.step = "feedback"
         st.rerun()
