@@ -42,7 +42,7 @@ def inject_css(mode=None):
     _new_css()
 @st.cache_data
 def load_artists():
-    music = pd.read_csv("data/processed/music_clean.csv")
+    music = pd.read_csv("data/processed/music_expanded_clean.csv", low_memory=False)
     return music["artist"].value_counts().index.tolist()
 
 artists = load_artists()
