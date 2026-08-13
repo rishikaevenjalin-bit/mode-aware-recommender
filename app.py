@@ -8,6 +8,8 @@ from src.ranking.inspiration import rank_inspiration
 from src.explanation.explain import explain
 from src.db.database import init_db, new_session_id, save_session, init_track_feedback, save_track_feedback
 import html
+import urllib.parse
+import urllib.parse
 
 def song_card(rank, track, artist, energy, tempo, valence, explanation, spotify_id=None):
     import urllib.parse as _up
@@ -46,10 +48,10 @@ MODE_THEME = {
     "Inspiration": {"accent": "#E8BCC8", "tint": "#FFF1F6", "icon": "\u2727"},
 }
 
-from styling import inject_css as _new_css
+import mi
 
 def inject_css(mode=None):
-    _new_css()
+    mi.theme()
 @st.cache_data
 def load_artists():
     music = pd.read_csv("data/processed/music_expanded_clean.csv", low_memory=False)
@@ -103,22 +105,29 @@ if st.session_state.step == "setup":
 elif st.session_state.step == "results":
     mode = st.session_state.mode
     inject_css(mode)
-    mode_key = mode.lower()
-    icons = {"focus": "\u25CE", "energy": "\u26A1", "inspiration": "\u2728"}
-    st.markdown(
-        f'<div style="text-align:center; margin-bottom:6px;"><span class="mi-badge {mode_key}">{icons[mode_key]} {mode.upper()}</span></div>',
-        unsafe_allow_html=True)
+    mi.badge(mode)
     st.markdown(f"<p style='text-align:center; color:#5A6478;'>Based on: {', '.join(st.session_state.seed_artists)}</p>", unsafe_allow_html=True)
     for i, t in enumerate(st.session_state.recs, 1):
         expl = explain(t, mode)
-        song_card(i, t["name"], t["artist"], t["energy"], t["tempo"], t["valence"], expl, t.get("spotify_id"))
-        _c1, _c2, _ = st.columns([1, 1, 4])
-        if _c1.button("Like", key=f"like_{i}"):
-            save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "like")
-            st.toast("Liked " + t["name"])
-        if _c2.button("Dislike", key=f"dislike_{i}"):
-            save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "dislike")
-            st.toast("Noted")
+        _is_seed = t["artist"] in st.session_state.seed_artists
+        mi.song_card(i, t["name"], t["artist"], f"{t['energy']:.2f}", f"{t['tempo']:.0f}", f"{t['valence']:.2f}", expl, is_seed=_is_seed)
+        _q = urllib.parse.quote(f"{t['name']} {t['artist']}")
+        _sp = f"https://open.spotify.com/search/{_q}"
+        _yt = f"https://www.youtube.com/results?search_query={_q}"
+        _c1, _c2, _c3, _c4 = st.columns(4)
+        with _c1:
+            st.link_button("Spotify", _sp, key=f"spotify_{i}", use_container_width=True)
+        with _c2:
+            st.link_button("YouTube", _yt, key=f"youtube_{i}", use_container_width=True)
+        with _c3:
+            if st.button("Like", key=f"like_{i}", use_container_width=True):
+                save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "like")
+                st.toast("Liked " + t["name"])
+        with _c4:
+            if st.button("Dislike", key=f"dislike_{i}", use_container_width=True):
+                save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "dislike")
+                st.toast("Noted")
+        st.write("")
     if st.button("Rate this session"):
         st.session_state.step = "feedback"
         st.rerun()
