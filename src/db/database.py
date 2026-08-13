@@ -97,3 +97,4 @@ def get_all_track_feedback():
     rows = conn.execute("SELECT * FROM track_feedback").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
