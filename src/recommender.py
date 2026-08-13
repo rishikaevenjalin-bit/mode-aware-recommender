@@ -9,9 +9,9 @@ _cf = None
 if os.path.exists("data/processed/als_model.pkl"):
     with open("data/processed/als_model.pkl", "rb") as f:
         _cf = pickle.load(f)
-with open("data/processed/content_model.pkl", "rb") as f:
+with open("data/processed/content_model_expanded.pkl", "rb") as f:
     _cb = pickle.load(f)
-_music = pd.read_csv("data/processed/music_clean.csv").reset_index(drop=True)
+_music = pd.read_csv("data/processed/music_expanded_clean.csv", low_memory=False).reset_index(drop=True)
 
 _model = _cf["model"] if _cf else None
 _matrix = _cf["matrix"] if _cf else None
