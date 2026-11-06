@@ -1,0 +1,1739 @@
+=== FILE TREE ===
+./.streamlit/config.toml
+./app.py
+./app/main.py
+./CODEBASE_DUMP.txt
+./components.py
+./DEPLOYMENT_URL.txt
+./mi.py
+./requirements.txt
+./results/artist_list.txt
+./results/focus_test.txt
+./results/mode_findings.txt
+./runtime.txt
+./src/__init__.py
+./src/acclaim/__init__.py
+./src/acclaim/acclaim.py
+./src/build_cf.py
+./src/build_content.py
+./src/build_hybrid.py
+./src/clean_data.py
+./src/db/__init__.py
+./src/db/database.py
+./src/eda.py
+./src/evaluation/__init__.py
+./src/evaluation/ablation.py
+./src/evaluation/diversity.py
+./src/evaluation/mood_match.py
+./src/evaluation/precision.py
+./src/evaluation/run_all.py
+./src/explanation/__init__.py
+./src/explanation/explain.py
+./src/make_acclaim_template.py
+./src/merge_datasets.py
+./src/ranking/__init__.py
+./src/ranking/energy.py
+./src/ranking/focus.py
+./src/ranking/inspiration.py
+./src/rebuild_expanded.py
+./src/recommender.py
+./styling.py
+./theme.py
+
+########## ./app.py ##########
+import streamlit as st
+import pandas as pd
+
+from src.recommender import generate_candidates_from_artists
+from src.ranking.focus import rank_focus
+from src.ranking.energy import rank_energy
+from src.ranking.inspiration import rank_inspiration
+from src.explanation.explain import explain
+from src.db.database import init_db, new_session_id, save_session, init_track_feedback, save_track_feedback
+import html
+import urllib.parse
+import urllib.parse
+
+def song_card(rank, track, artist, energy, tempo, valence, explanation, spotify_id=None):
+    import urllib.parse as _up
+    _q = _up.quote(f"{track} {artist}")
+    _yurl = f"https://www.youtube.com/results?search_query={_q}"
+    _surl = f"https://open.spotify.com/search/{_q}"
+    _sl = (f'<div style="margin-top:10px;">'
+           f'<a href="{_surl}" target="_blank" style="display:inline-block;padding:6px 14px;border-radius:999px;background:#1DB954;color:#fff;text-decoration:none;font-size:0.8rem;font-weight:700;margin-right:8px;">Listen on Spotify</a>'
+           f'<a href="{_yurl}" target="_blank" style="display:inline-block;padding:6px 14px;border-radius:999px;background:#FF0000;color:#fff;text-decoration:none;font-size:0.8rem;font-weight:700;">Listen on YouTube</a>'
+           f'</div>')
+    st.markdown(f"""<div class="mi-song">
+  <div class="mi-song-top">
+    <div class="mi-rank">{rank}</div>
+    <div class="mi-song-main">
+      <div class="mi-track">{html.escape(str(track))}</div>
+      <div class="mi-artist">{html.escape(str(artist))}</div>
+      <div class="mi-metrics">
+        <div class="mi-metric"><div class="mi-metric-label">Energy</div><div class="mi-metric-value">{energy:.2f}</div></div>
+        <div class="mi-metric"><div class="mi-metric-label">Tempo</div><div class="mi-metric-value">{tempo:.0f} BPM</div></div>
+        <div class="mi-metric"><div class="mi-metric-label">Valence</div><div class="mi-metric-value">{valence:.2f}</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="mi-why"><b>Why this track:</b> {html.escape(str(explanation))}</div>
+  {_sl}
+</div>""", unsafe_allow_html=True)
+
+
+st.set_page_config(page_title="MusicIntent", page_icon="music", layout="centered")
+init_db()
+init_track_feedback()
+
+MODE_THEME = {
+    "Focus":       {"accent": "#A8C9BB", "tint": "#F0F8F4", "icon": "\u25CE"},
+    "Energy":      {"accent": "#F0B89A", "tint": "#FFF3EC", "icon": "\u26A1"},
+    "Inspiration": {"accent": "#E8BCC8", "tint": "#FFF1F6", "icon": "\u2727"},
+}
+
+import mi
+
+def inject_css(mode=None):
+    mi.theme()
+@st.cache_data
+def load_artists():
+    music = pd.read_csv("data/processed/music_expanded_clean.csv", low_memory=False)
+    return music["artist"].value_counts().index.tolist()
+
+artists = load_artists()
+RANKERS = {"Focus": rank_focus, "Energy": rank_energy, "Inspiration": rank_inspiration}
+
+if "step" not in st.session_state:
+    st.session_state.step = "setup"
+    st.session_state.seed_artists = []
+    st.session_state.mode = None
+    st.session_state.recs = None
+    st.session_state.session_id = new_session_id()
+
+if st.session_state.step == "setup":
+    inject_css()
+    st.markdown("<h1 style='text-align:center;'>MusicIntent</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#536071;'>Personalised music for what you're looking for right now.</p>", unsafe_allow_html=True)
+    st.subheader("Choose your artists")
+    chosen = st.multiselect("Select 3-5 artists you enjoy:", options=artists,
+                            default=st.session_state.seed_artists, max_selections=5)
+    st.subheader("What are you listening for?")
+    mode = st.radio("Select a mode:", options=["Focus", "Energy", "Inspiration"],
+        captions=["Concentration, deep work", "Workouts, motivation", "Discovery, acclaimed music"], index=None)
+    if st.button("Get recommendations"):
+        if len(chosen) < 1:
+            st.error("Please pick at least one artist.")
+        elif mode is None:
+            st.error("Please select a mode.")
+        else:
+            st.session_state.seed_artists = chosen
+            st.session_state.mode = mode
+            with st.spinner("Finding the perfect music..."):
+                cands = generate_candidates_from_artists(chosen)
+                _ranked = RANKERS[mode](cands).reset_index(drop=True)
+                # Pin the best-ranked track from EACH selected artist at the top
+                _pinned_idx = []
+                for _a in chosen:
+                    _hit = _ranked[_ranked["artist"] == _a]
+                    if not _hit.empty:
+                        _pinned_idx.append(_hit.index[0])
+                if _pinned_idx:
+                    _pinned = _ranked.loc[_pinned_idx]
+                    _rest = _ranked.drop(index=_pinned_idx)
+                    _ranked = pd.concat([_pinned, _rest], ignore_index=True)
+                st.session_state.recs = _ranked.head(8).to_dict("records")
+            st.session_state.step = "results"
+            st.rerun()
+
+elif st.session_state.step == "results":
+    mode = st.session_state.mode
+    inject_css(mode)
+    mi.badge(mode)
+    st.markdown(f"<p style='text-align:center; color:#5A6478;'>Based on: {', '.join(st.session_state.seed_artists)}</p>", unsafe_allow_html=True)
+    for i, t in enumerate(st.session_state.recs, 1):
+        expl = explain(t, mode)
+        _is_seed = t["artist"] in st.session_state.seed_artists
+        mi.song_card(i, t["name"], t["artist"], f"{t['energy']:.2f}", f"{t['tempo']:.0f}", f"{t['valence']:.2f}", expl, is_seed=_is_seed)
+        _q = urllib.parse.quote(f"{t['name']} {t['artist']}")
+        _sp = f"https://open.spotify.com/search/{_q}"
+        _yt = f"https://www.youtube.com/results?search_query={_q}"
+        _c1, _c2, _c3, _c4 = st.columns(4)
+        with _c1:
+            st.link_button("Spotify", _sp, key=f"spotify_{i}", use_container_width=True)
+        with _c2:
+            st.link_button("YouTube", _yt, key=f"youtube_{i}", use_container_width=True)
+        with _c3:
+            if st.button("Like", key=f"like_{i}", use_container_width=True):
+                save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "like")
+                st.toast("Liked " + t["name"])
+        with _c4:
+            if st.button("Dislike", key=f"dislike_{i}", use_container_width=True):
+                save_track_feedback(st.session_state.session_id, mode, t["name"], t["artist"], "dislike")
+                st.toast("Noted")
+        st.write("")
+    if st.button("Rate this session"):
+        st.session_state.step = "feedback"
+        st.rerun()
+
+elif st.session_state.step == "feedback":
+    inject_css(st.session_state.mode)
+    st.title("How was this session?")
+    st.caption(f"Mode: {st.session_state.mode}")
+    relevance = st.slider("How relevant were the recommendations?", 1, 5, 3)
+    mode_fit = st.slider("Did they suit your chosen mode?", 1, 5, 3)
+    expl_r = st.slider("Were the explanations useful?", 1, 5, 3)
+    comment = st.text_area("Additional comments (optional)")
+    if st.button("Submit feedback"):
+        save_session(st.session_state.session_id, st.session_state.mode,
+                     st.session_state.seed_artists, st.session_state.recs,
+                     relevance, mode_fit, expl_r, comment)
+        st.session_state.step = "done"
+        st.rerun()
+
+elif st.session_state.step == "done":
+    inject_css()
+    st.markdown("""
+    <div style="text-align:center; padding:40px 0;">
+      <div style="width:70px; height:70px; margin:0 auto; border-radius:50%; background:linear-gradient(135deg, #A8C9BB, #E8BCC8); display:flex; align-items:center; justify-content:center; font-size:32px; color:white;">&#10003;</div>
+      <h2 style="margin-top:20px;">Session Complete!</h2>
+      <p style="color:#536071;">Thank you for participating.<br>Your anonymous feedback has been recorded.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Start a new session"):
+        for k in ["step", "seed_artists", "mode", "recs", "session_id"]:
+            st.session_state.pop(k, None)
+        st.rerun()
+
+########## ./app/main.py ##########
+import streamlit as st
+
+st.set_page_config(page_title='MusicIntent')
+st.title('MusicIntent')
+st.write('Setup works.')
+
+########## ./components.py ##########
+import html
+import streamlit as st
+
+MODE_META = {
+    "focus":       {"icon": "\u25CE", "label": "Focus",       "desc": "Concentration and deep work"},
+    "energy":      {"icon": "\u26A1", "label": "Energy",      "desc": "Workouts and motivation"},
+    "inspiration": {"icon": "\u2726", "label": "Inspiration", "desc": "Discovery and acclaimed music"},
+}
+
+def _e(v):
+    return html.escape(str(v))
+
+def mode_badge(mode):
+    m = MODE_META[mode.lower()]
+    st.markdown(
+        f'<div class="mi-center"><span class="badge {mode.lower()}">{m["icon"]} {m["label"].upper()}</span></div>',
+        unsafe_allow_html=True)
+
+def mode_grid(selected):
+    cards = "".join(
+        f'<div class="mode-card {k}{" selected" if k == selected.lower() else ""}">'
+        f'<div class="mode-icon">{v["icon"]}</div>'
+        f'<div class="mode-name">{v["label"]}</div>'
+        f'<div class="mode-desc">{v["desc"]}</div></div>'
+        for k, v in MODE_META.items())
+    st.markdown(f'<div class="mode-grid">{cards}</div>', unsafe_allow_html=True)
+
+def artist_chips(artists):
+    if not artists:
+        return
+    chips = "".join(f'<span class="artist-chip"><span class="dot"></span>{_e(a)}</span>' for a in artists)
+    st.markdown(f'<div class="chip-row">{chips}</div>', unsafe_allow_html=True)
+
+def song_card(rank, title, artist, mode, hook, explanation,
+              signals=None, art_url=None, is_seed=False):
+    if art_url:
+        art = f'<img class="song-art" src="{_e(art_url)}" alt="Album art">'
+    else:
+        art = '<div class="song-art" aria-hidden="true">\u266A</div>'
+    tags = f'<span class="badge {mode.lower()}">{MODE_META[mode.lower()]["label"]} fit</span>'
+    if is_seed:
+        tags += '<span class="badge seed">\u2726 From your picks</span>'
+    sig = ""
+    if signals:
+        sig = '<div class="signal-row">' + "".join(
+            f'<span class="signal"><span class="k">{_e(k)}</span><span class="v">{_e(v)}</span></span>'
+            for k, v in signals.items()) + "</div>"
+    seed_cls = " is-seed" if is_seed else ""
+    st.markdown(f"""<div class="song-card mi-fade{seed_cls}">
+  <div class="song-head">
+    <div class="song-rank">{rank}</div>
+    {art}
+    <div class="song-meta">
+      <div class="song-title">{_e(title)}</div>
+      <div class="song-artist">{_e(artist)}</div>
+      <div class="song-tags">{tags}</div>
+    </div>
+  </div>
+  <div class="explanation-card">
+    <div class="exp-label">WHY THIS TRACK</div>
+    <div class="exp-hook">{_e(hook)}</div>
+    <div class="exp-body">{_e(explanation)}</div>
+    {sig}
+  </div>
+</div>""", unsafe_allow_html=True)
+
+def completion(title="Thanks for listening.",
+               body="Your anonymous feedback has been recorded.<br>It genuinely helps the study."):
+    st.markdown(f"""<div class="mi-complete">
+  <div class="mi-check" role="img" aria-label="Complete">\u2713</div>
+  <h1>{_e(title)}</h1>
+  <p class="mi-lede" style="margin:12px auto 0;">{body}</p>
+</div>""", unsafe_allow_html=True)
+
+########## ./mi.py ##########
+import html
+import streamlit as st
+
+_CSS = (
+"<style>"
+"@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');"
+":root{--ink:#1B2140;--ink2:#5C6485;--ink3:#8A91AC;--acc:#8A7FE8;--glass:rgba(255,255,255,0.66);--glass2:rgba(255,255,255,0.85);--bd:rgba(255,255,255,0.75);--hair:rgba(27,33,64,0.07);--sh:0 8px 28px rgba(70,60,130,0.10);--ease:cubic-bezier(0.23,1,0.32,1);}"
+".stApp{background:radial-gradient(760px 520px at 12% -6%,rgba(200,231,255,0.55),transparent 62%),radial-gradient(680px 480px at 92% 8%,rgba(243,196,251,0.42),transparent 62%),radial-gradient(720px 600px at 50% 108%,rgba(208,209,255,0.45),transparent 62%),linear-gradient(135deg,#F7FAFF 0%,#F6F0FF 52%,#FFF4FB 100%);background-attachment:fixed;}"
+"header[data-testid='stHeader']{background:transparent!important;}"
+".block-container{max-width:900px;padding:2.2rem 1.2rem 4rem;}"
+"html,body,.stApp,button,input,textarea,select,[class*='css']{font-family:'Plus Jakarta Sans',ui-sans-serif,-apple-system,sans-serif!important;color:var(--ink);}"
+"h1,h2,h3{color:var(--ink)!important;letter-spacing:-0.02em;}h1{font-size:2.4rem!important;font-weight:800!important;}"
+"p,li,label{color:var(--ink);line-height:1.6;}"
+".mi-center{text-align:center;}"
+".mi-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.06em;border:1px solid var(--bd);}"
+".mi-badge.focus{background:#D8DDFF;color:#3B45A8;}.mi-badge.energy{background:#FFCBF2;color:#9E3B78;}.mi-badge.inspiration{background:#E5D3FF;color:#6A3AAF;}"
+".mi-badge.seed{background:linear-gradient(90deg,#D0D1FF,#FFCBF2);color:#4A3A78;letter-spacing:0;}"
+".mi-card{background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--bd);border-radius:22px;box-shadow:var(--sh);padding:18px 20px;margin:0 0 10px;transition:transform 180ms var(--ease),box-shadow 180ms var(--ease);}"
+".mi-card:hover{transform:translateY(-2px);box-shadow:0 16px 44px rgba(70,60,130,0.14);}"
+".mi-head{display:flex;align-items:center;gap:15px;}"
+".mi-rank{flex:0 0 34px;height:34px;border-radius:11px;background:var(--glass2);border:1px solid var(--hair);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;color:var(--acc);}"
+".mi-art{flex:0 0 62px;width:62px;height:62px;border-radius:13px;object-fit:cover;background:linear-gradient(135deg,#D0D1FF,#FFCBF2);display:flex;align-items:center;justify-content:center;font-size:24px;color:#6A5FB8;}"
+".mi-meta{flex:1 1 auto;min-width:0;}"
+".mi-title{font-size:1.08rem;font-weight:700;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
+".mi-artist{font-size:.9rem;color:var(--ink2);margin-top:2px;}"
+".mi-sig{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}"
+".mi-chip{background:var(--glass2);border:1px solid var(--hair);border-radius:10px;padding:5px 10px;font-size:.78rem;}"
+".mi-chip .k{color:var(--ink3);font-weight:600;}.mi-chip .v{color:var(--ink);font-weight:700;margin-left:5px;}"
+".mi-why{background:linear-gradient(135deg,rgba(255,255,255,0.80),rgba(243,241,255,0.60));border:1px solid var(--bd);border-radius:16px;padding:15px 17px;margin-top:14px;}"
+".mi-why .l{font-size:.66rem;font-weight:700;letter-spacing:.12em;color:var(--acc);margin-bottom:6px;}"
+".mi-why .b{font-size:.93rem;line-height:1.6;color:#3D4568;}"
+".stButton>button,.stFormSubmitButton>button,[data-testid='stLinkButton']>a{width:100%;border-radius:14px;font-weight:700;font-size:.95rem;padding:.62rem 1rem;border:1px solid var(--bd);background:var(--glass2);color:var(--ink)!important;box-shadow:0 2px 10px rgba(70,60,130,0.06);text-decoration:none!important;transition:transform 150ms var(--ease),box-shadow 150ms var(--ease);}"
+".stButton>button:hover,[data-testid='stLinkButton']>a:hover{transform:translateY(-2px);box-shadow:var(--sh);}"
+".stButton>button[kind='primary'],.stFormSubmitButton>button[kind='primary']{background:linear-gradient(90deg,#9B93F0,#C9A8F0 55%,#E9A9D6);color:#fff!important;border:none;box-shadow:0 8px 24px rgba(138,127,232,0.34);}"
+"[class*='st-key-spotify'] a{background:rgba(29,185,84,0.11)!important;border:1px solid rgba(29,185,84,0.35)!important;color:#0F7C39!important;}"
+"[class*='st-key-youtube'] a{background:rgba(226,63,63,0.09)!important;border:1px solid rgba(226,63,63,0.30)!important;color:#B02626!important;}"
+"[class*='st-key-like'] button,[class*='st-key-dislike'] button{border-radius:999px!important;background:rgba(255,255,255,0.5)!important;color:var(--ink2)!important;font-weight:600!important;box-shadow:none!important;}"
+"[data-testid='stMultiSelect'] div[data-baseweb='select']>div,.stSelectbox div[data-baseweb='select']>div{background:var(--glass2)!important;border:1px solid var(--bd)!important;border-radius:14px!important;min-height:50px;}"
+"[data-testid='stMultiSelect'] span[data-baseweb='tag']{background:linear-gradient(90deg,#A79CF0,#D6A6E8)!important;border-radius:999px!important;color:#fff!important;}"
+"div[data-baseweb='popover'] ul[role='listbox']{background:rgba(255,255,255,0.97)!important;border-radius:16px!important;box-shadow:0 16px 48px rgba(70,60,130,0.16)!important;}"
+"div[data-baseweb='popover'] li{color:var(--ink)!important;}"
+".stTextInput input,.stTextArea textarea{background:var(--glass2)!important;border:1px solid var(--bd)!important;border-radius:14px!important;color:var(--ink)!important;}"
+"[data-testid='stRadio'] label{background:rgba(255,255,255,0.45);border:1px solid var(--bd);border-radius:16px;padding:13px 15px;width:100%;}"
+"[data-testid='stRadio'] label:has(input:checked){background:var(--glass2);border-color:var(--acc);box-shadow:0 0 0 4px rgba(138,127,232,0.16);}"
+"[data-testid='stSlider'] div[role='slider']{background:var(--acc)!important;}"
+"[data-testid='stSlider'] [data-baseweb='slider']>div>div{background:var(--acc)!important;}"
+".mi-check{width:100px;height:100px;border-radius:50%;margin:0 auto 22px;background:linear-gradient(135deg,#A79CF0,#D8BBFF 45%,#FFCBF2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:44px;box-shadow:0 14px 40px rgba(138,127,232,0.38);}"
+"@media(max-width:640px){.mi-title{white-space:normal;}.mi-art{flex:0 0 50px;width:50px;height:50px;}}"
+"</style>"
+)
+
+
+def theme():
+    st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def _e(v):
+    return html.escape(str(v))
+
+
+def badge(mode):
+    icon = {"focus": "\u25CE", "energy": "\u26A1", "inspiration": "\u2726"}.get(mode.lower(), "\u2726")
+    h = ('<div class="mi-center"><span class="mi-badge ' + mode.lower() + '">'
+         + icon + " " + _e(mode).upper() + "</span></div>")
+    st.markdown(h, unsafe_allow_html=True)
+
+
+def song_card(rank, title, artist, energy, tempo, valence, why,
+              art_url=None, is_seed=False):
+    art = ('<img class="mi-art" src="' + _e(art_url) + '" alt="">') if art_url \
+        else '<div class="mi-art">&#9834;</div>'
+    seed = '<span class="mi-badge seed">&#10022; From your picks</span>' if is_seed else ""
+    h = (
+        '<div class="mi-card"><div class="mi-head">'
+        '<div class="mi-rank">' + _e(rank) + '</div>' + art +
+        '<div class="mi-meta">'
+        '<div class="mi-title">' + _e(title) + '</div>'
+        '<div class="mi-artist">' + _e(artist) + '</div>'
+        '<div class="mi-sig">'
+        '<span class="mi-chip"><span class="k">Energy</span><span class="v">' + _e(energy) + '</span></span>'
+        '<span class="mi-chip"><span class="k">Tempo</span><span class="v">' + _e(tempo) + ' BPM</span></span>'
+        '<span class="mi-chip"><span class="k">Valence</span><span class="v">' + _e(valence) + '</span></span>'
+        + seed +
+        '</div></div></div>'
+        '<div class="mi-why"><div class="l">WHY THIS TRACK</div>'
+        '<div class="b">' + _e(why) + '</div></div>'
+        '</div>'
+    )
+    st.markdown(h, unsafe_allow_html=True)
+
+
+def complete(title="Thanks for listening.", body="Your anonymous feedback has been recorded."):
+    h = ('<div class="mi-center" style="padding:34px 0 8px;">'
+         '<div class="mi-check">&#10003;</div>'
+         '<h1>' + _e(title) + '</h1>'
+         '<p style="color:#5C6485;font-size:1.05rem;">' + _e(body) + '</p></div>')
+    st.markdown(h, unsafe_allow_html=True)
+
+########## ./src/__init__.py ##########
+
+########## ./src/acclaim/__init__.py ##########
+
+########## ./src/acclaim/acclaim.py ##########
+import pandas as pd
+import numpy as np
+
+# Locked weights (proposal): Grammy 30%, Metacritic 40%, Rolling Stone 30%
+W_GRAMMY = 0.30
+W_METACRITIC = 0.40
+W_ROLLINGSTONE = 0.30
+
+def _norm(s):
+    s = s.astype(float)
+    if s.max() - s.min() < 1e-9:
+        return s * 0.0
+    return (s - s.min()) / (s.max() - s.min())
+
+def build_acclaim_scores(path="data/raw/acclaim_data.csv", out="data/processed/acclaim_scores.csv"):
+    df = pd.read_csv(path)
+    df["grammy_signal"] = df["grammy_wins"] * 2 + df["grammy_noms"]
+    g = _norm(df["grammy_signal"])
+    m = _norm(df["metacritic"])
+    r = _norm(df["rolling_stone"])
+    df["acclaim_score"] = W_GRAMMY * g + W_METACRITIC * m + W_ROLLINGSTONE * r
+    df.to_csv(out, index=False)
+    return df
+
+if __name__ == "__main__":
+    df = build_acclaim_scores()
+    print("Acclaim scores built for", len(df), "artists.")
+    print("\nTop 15 by acclaim score:")
+    top = df.sort_values("acclaim_score", ascending=False).head(15)
+    print(top[["artist", "grammy_wins", "metacritic", "rolling_stone", "acclaim_score"]].to_string(index=False))
+
+########## ./src/build_cf.py ##########
+import pandas as pd
+import numpy as np
+import scipy.sparse as sparse
+from implicit.als import AlternatingLeastSquares
+import pickle
+
+print("Loading interactions...")
+hist = pd.read_csv("data/processed/interactions_clean.csv")
+print("Rows:", hist.shape[0])
+
+# Map user_id and track_id to integer indices for the matrix
+hist["user_idx"] = hist["user_id"].astype("category").cat.codes
+hist["track_idx"] = hist["track_id"].astype("category").cat.codes
+
+# Save the mappings (idx -> real id) for later use
+user_map = dict(enumerate(hist["user_id"].astype("category").cat.categories))
+track_map = dict(enumerate(hist["track_id"].astype("category").cat.categories))
+
+# Build sparse matrix: rows = users, cols = tracks, values = playcount
+n_users = hist["user_idx"].nunique()
+n_tracks = hist["track_idx"].nunique()
+matrix = sparse.csr_matrix(
+    (hist["playcount"].astype(float), (hist["user_idx"], hist["track_idx"])),
+    shape=(n_users, n_tracks),
+)
+print("Matrix shape:", matrix.shape)
+
+# Train ALS
+print("Training ALS model...")
+model = AlternatingLeastSquares(factors=50, regularization=0.01, iterations=15)
+model.fit(matrix)
+print("Training done.")
+
+# Save model, matrix, and maps
+with open("data/processed/als_model.pkl", "wb") as f:
+    pickle.dump({"model": model, "matrix": matrix, "user_map": user_map, "track_map": track_map}, f)
+print("Saved model to data/processed/als_model.pkl")
+
+# Sanity check: recommend 5 tracks for user index 0
+music = pd.read_csv("data/processed/music_clean.csv")
+ids, scores = model.recommend(0, matrix[0], N=5)
+print("\nSample recommendations for user 0:")
+for i in ids:
+    tid = track_map[i]
+    row = music[music["track_id"] == tid]
+    if not row.empty:
+        print(" -", row.iloc[0]["name"], "by", row.iloc[0]["artist"])
+
+########## ./src/build_content.py ##########
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics.pairwise import cosine_similarity
+import pickle
+
+print("Loading music...")
+music = pd.read_csv("data/processed/music_clean.csv").reset_index(drop=True)
+print("Tracks:", music.shape[0])
+
+features = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+scaler = MinMaxScaler()
+feature_matrix = scaler.fit_transform(music[features])
+print("Feature matrix shape:", feature_matrix.shape)
+
+with open("data/processed/content_model.pkl", "wb") as f:
+    pickle.dump({"feature_matrix": feature_matrix, "scaler": scaler,
+                 "features": features, "track_ids": music["track_id"].tolist()}, f)
+print("Saved content model.")
+
+seed = 0
+sims = cosine_similarity([feature_matrix[seed]], feature_matrix)[0]
+top = np.argsort(sims)[::-1][1:6]
+print("Seed track:", music.iloc[seed]["name"], "by", music.iloc[seed]["artist"])
+print("Most similar by audio features:")
+for i in top:
+    sim_val = round(float(sims[i]), 3)
+    print(" -", music.iloc[i]["name"], "by", music.iloc[i]["artist"], "sim", sim_val)
+
+########## ./src/build_hybrid.py ##########
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
+
+print("Loading models...")
+with open("data/processed/als_model.pkl", "rb") as f:
+    cf = pickle.load(f)
+with open("data/processed/content_model.pkl", "rb") as f:
+    cb = pickle.load(f)
+music = pd.read_csv("data/processed/music_clean.csv").reset_index(drop=True)
+
+model = cf["model"]
+matrix = cf["matrix"]
+track_map = cf["track_map"]
+feat = cb["feature_matrix"]
+content_track_ids = cb["track_ids"]
+
+# track_id -> row index in content feature matrix
+cid_to_row = {tid: i for i, tid in enumerate(content_track_ids)}
+
+def normalize(x):
+    x = np.asarray(x, dtype=float)
+    if x.max() - x.min() < 1e-9:
+        return np.zeros_like(x)
+    return (x - x.min()) / (x.max() - x.min())
+
+def hybrid_recommend(user_idx, alpha=0.5, n=10):
+    # CF scores for all tracks for this user
+    cf_ids, cf_scores = model.recommend(user_idx, matrix[user_idx], N=500, filter_already_liked_items=False)
+    # Build user taste profile: average audio features of tracks they played
+    played = matrix[user_idx].indices
+    played_tids = [track_map[i] for i in played]
+    played_rows = [cid_to_row[t] for t in played_tids if t in cid_to_row]
+    if not played_rows:
+        print("No audio features for this user\047s tracks.")
+        return
+    user_profile = feat[played_rows].mean(axis=0)
+    # Content score for each CF candidate
+    cand_tids = [track_map[i] for i in cf_ids]
+    cand_rows = [cid_to_row.get(t, None) for t in cand_tids]
+    content_scores = []
+    for r in cand_rows:
+        if r is None:
+            content_scores.append(0.0)
+        else:
+            content_scores.append(cosine_similarity([user_profile], [feat[r]])[0][0])
+    cf_n = normalize(cf_scores)
+    ct_n = normalize(content_scores)
+    hybrid = alpha * cf_n + (1 - alpha) * ct_n
+    order = np.argsort(hybrid)[::-1][:n]
+    print("Top hybrid recommendations (alpha=" + str(alpha) + "):")
+    for o in order:
+        tid = cand_tids[o]
+        row = music[music["track_id"] == tid]
+        if not row.empty:
+            print(" -", row.iloc[0]["name"], "by", row.iloc[0]["artist"])
+
+hybrid_recommend(0, alpha=0.5, n=10)
+
+########## ./src/clean_data.py ##########
+import pandas as pd
+
+print("Loading data...")
+music = pd.read_csv("data/raw/Music Info.csv")
+hist = pd.read_csv("data/raw/User Listening History.csv")
+print("Loaded:", music.shape, hist.shape)
+
+music = music.dropna(subset=["track_id", "name", "artist"])
+music = music.drop_duplicates(subset="track_id")
+print("Music after clean:", music.shape)
+
+hist = hist[hist["track_id"].isin(music["track_id"])]
+print("History after matching:", hist.shape)
+
+user_counts = hist["user_id"].value_counts()
+active_users = user_counts[user_counts >= 20].index
+hist = hist[hist["user_id"].isin(active_users)]
+
+track_counts = hist["track_id"].value_counts()
+popular_tracks = track_counts[track_counts >= 50].index
+hist = hist[hist["track_id"].isin(popular_tracks)]
+print("History after filtering:", hist.shape)
+print("Users:", hist["user_id"].nunique(), "Tracks:", hist["track_id"].nunique())
+
+music = music[music["track_id"].isin(hist["track_id"])]
+print("Final music:", music.shape)
+
+music.to_csv("data/processed/music_clean.csv", index=False)
+hist.to_csv("data/processed/interactions_clean.csv", index=False)
+print("Saved.")
+
+########## ./src/db/__init__.py ##########
+
+########## ./src/db/database.py ##########
+import sqlite3
+import json
+import uuid
+from datetime import datetime
+
+DB_PATH = "music_rec.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id TEXT PRIMARY KEY,
+            mode TEXT,
+            seed_artists TEXT,
+            recommendations TEXT,
+            rating_relevance INTEGER,
+            rating_mode_fit INTEGER,
+            rating_explanation INTEGER,
+            comment TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def new_session_id():
+    return str(uuid.uuid4())
+
+def save_session(session_id, mode, seed_artists, recommendations,
+                 rating_relevance, rating_mode_fit, rating_explanation, comment):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    rec_names = [f"{r['name']} - {r['artist']}" for r in recommendations]
+    c.execute("""
+        INSERT OR REPLACE INTO sessions
+        (session_id, mode, seed_artists, recommendations,
+         rating_relevance, rating_mode_fit, rating_explanation, comment, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        session_id, mode, json.dumps(seed_artists), json.dumps(rec_names),
+        rating_relevance, rating_mode_fit, rating_explanation, comment,
+        datetime.now().isoformat(),
+    ))
+    conn.commit()
+    conn.close()
+
+def get_all_sessions():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM sessions").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+if __name__ == "__main__":
+    init_db()
+    print("Database initialised at", DB_PATH)
+    # quick self-test
+    sid = new_session_id()
+    save_session(sid, "Focus", ["Radiohead"], [{"name": "Test", "artist": "X"}], 5, 4, 5, "good")
+    print("Saved test session:", sid)
+    print("Total sessions:", len(get_all_sessions()))
+
+
+def init_track_feedback():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS track_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            mode TEXT,
+            track_name TEXT,
+            artist TEXT,
+            feedback TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_track_feedback(session_id, mode, track_name, artist, feedback):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO track_feedback (session_id, mode, track_name, artist, feedback, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (session_id, mode, track_name, artist, feedback, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+
+
+def get_all_track_feedback():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM track_feedback").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+########## ./src/eda.py ##########
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="whitegrid")
+
+print("Loading data...")
+music = pd.read_csv("data/processed/music_clean.csv")
+hist = pd.read_csv("data/processed/interactions_clean.csv")
+
+print("Tracks:", music.shape[0])
+print("Interactions:", hist.shape[0])
+print("Users:", hist["user_id"].nunique())
+print("Artists:", music["artist"].nunique())
+
+features = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+# 1. Audio feature distributions
+fig, axes = plt.subplots(2, 4, figsize=(18, 8))
+for ax, feat in zip(axes.flatten(), features):
+    sns.histplot(music[feat], bins=40, ax=ax, color="steelblue")
+    ax.set_title(feat)
+axes.flatten()[-1].axis("off")
+plt.tight_layout()
+plt.savefig("results/audio_feature_distributions.png", dpi=120)
+plt.close()
+print("Saved: audio_feature_distributions.png")
+
+# 2. Top 15 artists by track count
+top_artists = music["artist"].value_counts().head(15)
+plt.figure(figsize=(10, 6))
+sns.barplot(x=top_artists.values, y=top_artists.index, color="coral")
+plt.title("Top 15 Artists by Track Count")
+plt.xlabel("Number of tracks")
+plt.tight_layout()
+plt.savefig("results/top_artists.png", dpi=120)
+plt.close()
+print("Saved: top_artists.png")
+
+# 3. Track popularity (how many users played each track)
+track_pop = hist["track_id"].value_counts()
+plt.figure(figsize=(10, 6))
+sns.histplot(track_pop.values, bins=50, color="seagreen")
+plt.title("Track Popularity Distribution (listeners per track)")
+plt.xlabel("Number of listeners")
+plt.ylabel("Number of tracks")
+plt.tight_layout()
+plt.savefig("results/track_popularity.png", dpi=120)
+plt.close()
+print("Saved: track_popularity.png")
+
+# 4. User activity (how many tracks each user played)
+user_act = hist["user_id"].value_counts()
+plt.figure(figsize=(10, 6))
+sns.histplot(user_act.values, bins=50, color="mediumpurple")
+plt.title("User Activity Distribution (tracks per user)")
+plt.xlabel("Number of tracks played")
+plt.ylabel("Number of users")
+plt.tight_layout()
+plt.savefig("results/user_activity.png", dpi=120)
+plt.close()
+print("Saved: user_activity.png")
+
+# 5. Feature correlation heatmap
+plt.figure(figsize=(9, 7))
+corr = music[features].corr()
+sns.heatmap(corr, annot=True, cmap="coolwarm", center=0, fmt=".2f")
+plt.title("Audio Feature Correlations")
+plt.tight_layout()
+plt.savefig("results/feature_correlations.png", dpi=120)
+plt.close()
+print("Saved: feature_correlations.png")
+
+# 6. Tracks per year
+if "year" in music.columns:
+    year_counts = music["year"].value_counts().sort_index()
+    year_counts = year_counts[year_counts.index > 1950]
+    plt.figure(figsize=(12, 5))
+    sns.lineplot(x=year_counts.index, y=year_counts.values, color="darkorange")
+    plt.title("Tracks per Year")
+    plt.xlabel("Year")
+    plt.ylabel("Number of tracks")
+    plt.tight_layout()
+    plt.savefig("results/tracks_per_year.png", dpi=120)
+    plt.close()
+    print("Saved: tracks_per_year.png")
+
+print("EDA complete. Charts in results/")
+
+########## ./src/evaluation/__init__.py ##########
+
+########## ./src/evaluation/ablation.py ##########
+import numpy as np
+import pandas as pd
+
+acclaim_full = pd.read_csv("data/processed/acclaim_scores.csv")[["artist", "acclaim_score"]]
+
+def avg_acclaim_of_top(ranked_df, k=10):
+    """Mean acclaim score of the top-k recommended tracks' artists."""
+    top = ranked_df.head(k).merge(acclaim_full, on="artist", how="left")
+    return top["acclaim_score_y"].fillna(0).mean() if "acclaim_score_y" in top else top["acclaim_score"].fillna(0).mean()
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    from src.ranking.inspiration import rank_inspiration
+
+    users = [0, 5, 10, 15, 20]
+
+    print("=" * 60)
+    print("ABLATION 1: Does acclaim improve Inspiration? (RQ3)")
+    print("Metric: avg acclaim of top-10 recommended artists")
+    print("=" * 60)
+    print(f"{'user':>5} {'no acclaim (hybrid only)':>26} {'with acclaim':>14}")
+    no_acc, with_acc = [], []
+    for u in users:
+        c = generate_candidates(u)
+        if c.empty:
+            continue
+        # no acclaim = pure hybrid ranking (mode_weight 0)
+        base = rank_inspiration(c, mode_weight=0.0)
+        insp = rank_inspiration(c, mode_weight=0.5)
+        b = base.head(10)["acclaim_score"].fillna(0).mean()
+        i = insp.head(10)["acclaim_score"].fillna(0).mean()
+        no_acc.append(b); with_acc.append(i)
+        print(f"{u:>5} {b:>26.3f} {i:>14.3f}")
+    print(f"{'AVG':>5} {np.mean(no_acc):>26.3f} {np.mean(with_acc):>14.3f}")
+    lift = np.mean(with_acc) - np.mean(no_acc)
+    print(f"\nAcclaim lift: +{lift:.3f} ({100*lift/max(np.mean(no_acc),0.001):.0f}% more acclaimed)")
+
+    print("\n" + "=" * 60)
+    print("ABLATION 2: Weight sensitivity")
+    print("avg acclaim of top-10 under different mode_weights")
+    print("=" * 60)
+    print(f"{'user':>5} {'w=0.0':>7} {'w=0.3':>7} {'w=0.5':>7} {'w=0.7':>7}")
+    for u in users:
+        c = generate_candidates(u)
+        if c.empty:
+            continue
+        vals = []
+        for w in [0.0, 0.3, 0.5, 0.7]:
+            r = rank_inspiration(c, mode_weight=w)
+            vals.append(r.head(10)["acclaim_score"].fillna(0).mean())
+        print(f"{u:>5} {vals[0]:>7.3f} {vals[1]:>7.3f} {vals[2]:>7.3f} {vals[3]:>7.3f}")
+
+########## ./src/evaluation/diversity.py ##########
+import numpy as np
+from sklearn.metrics.pairwise import euclidean_distances
+
+FEATURES = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+def intra_list_diversity(ranked_df, k=10):
+    """Average pairwise Euclidean distance among top-k tracks in audio-feature space."""
+    top = ranked_df.head(k)
+    if len(top) < 2:
+        return 0.0
+    X = top[FEATURES].values
+    # normalize each feature column 0-1 so tempo doesn't dominate
+    mins = X.min(axis=0)
+    ranges = X.max(axis=0) - mins
+    ranges[ranges < 1e-9] = 1.0
+    Xn = (X - mins) / ranges
+    dists = euclidean_distances(Xn)
+    n = len(top)
+    total = dists.sum() / 2.0
+    pairs = n * (n - 1) / 2.0
+    return total / pairs
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    from src.ranking.focus import rank_focus
+    from src.ranking.energy import rank_energy
+    from src.ranking.inspiration import rank_inspiration
+
+    users = [0, 5, 10, 15, 20]
+    print("Intra-List Diversity@10 across", len(users), "users:")
+    print(f"{'user':>5} {'baseline':>9} {'focus':>7} {'energy':>7} {'inspir':>7}")
+    for u in users:
+        c = generate_candidates(u)
+        if c.empty:
+            continue
+        base = intra_list_diversity(c.sort_values("hybrid_score", ascending=False))
+        f = intra_list_diversity(rank_focus(c))
+        e = intra_list_diversity(rank_energy(c))
+        i = intra_list_diversity(rank_inspiration(c))
+        print(f"{u:>5} {base:>9.3f} {f:>7.3f} {e:>7.3f} {i:>7.3f}")
+
+########## ./src/evaluation/mood_match.py ##########
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+FEATURES = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+# Target profiles per mode (0-1 scaled feature space).
+# Order: danceability, energy, speechiness, acousticness, instrumentalness, valence, tempo
+TARGETS = {
+    "focus":  np.array([0.3, 0.15, 0.1, 0.8, 0.8, 0.3, 0.4]),
+    "energy": np.array([0.8, 0.9,  0.3, 0.1, 0.1, 0.8, 0.8]),
+    "inspiration": None,  # acclaim-based, not a pure audio target
+}
+
+def _scale(df):
+    X = df[FEATURES].values.astype(float)
+    # scale using fixed known feature ranges (0-1 features already; tempo needs /250)
+    X = X.copy()
+    X[:, 6] = X[:, 6] / 250.0  # tempo to ~0-1
+    return X
+
+def mood_match(ranked_df, target_name, k=10):
+    """Cosine similarity between the top-k recommendation centroid and a mode target."""
+    if TARGETS.get(target_name) is None:
+        return None
+    top = ranked_df.head(k)
+    X = _scale(top)
+    centroid = X.mean(axis=0).reshape(1, -1)
+    target = TARGETS[target_name].reshape(1, -1)
+    return float(cosine_similarity(centroid, target)[0][0])
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    from src.ranking.focus import rank_focus
+    from src.ranking.energy import rank_energy
+
+    users = [0, 5, 10, 15, 20]
+    print("Mood-Match: each mode scored against each target (avg over users)")
+    print("Proof = each mode should win on its OWN target.\n")
+
+    focus_on_focus, focus_on_energy = [], []
+    energy_on_focus, energy_on_energy = [], []
+    base_on_focus, base_on_energy = [], []
+
+    for u in users:
+        c = generate_candidates(u)
+        if c.empty:
+            continue
+        base = c.sort_values("hybrid_score", ascending=False)
+        f = rank_focus(c)
+        e = rank_energy(c)
+        focus_on_focus.append(mood_match(f, "focus"))
+        focus_on_energy.append(mood_match(f, "energy"))
+        energy_on_focus.append(mood_match(e, "focus"))
+        energy_on_energy.append(mood_match(e, "energy"))
+        base_on_focus.append(mood_match(base, "focus"))
+        base_on_energy.append(mood_match(base, "energy"))
+
+    def avg(x): return sum(x) / len(x)
+    print(f"{'ranking':>10} {'vs FOCUS target':>16} {'vs ENERGY target':>17}")
+    print(f"{'baseline':>10} {avg(base_on_focus):>16.3f} {avg(base_on_energy):>17.3f}")
+    print(f"{'focus':>10} {avg(focus_on_focus):>16.3f} {avg(focus_on_energy):>17.3f}")
+    print(f"{'energy':>10} {avg(energy_on_focus):>16.3f} {avg(energy_on_energy):>17.3f}")
+
+########## ./src/evaluation/precision.py ##########
+import numpy as np
+import pandas as pd
+import pickle
+
+with open("data/processed/als_model.pkl", "rb") as f:
+    _cf = pickle.load(f)
+_matrix = _cf["matrix"]
+_track_map = _cf["track_map"]
+
+def precision_at_k(ranked_df, user_idx, k=10):
+    """Fraction of top-k recommended tracks that are in the user's actual played set."""
+    played_cols = set(_matrix[user_idx].indices)
+    played_tids = set(_track_map[i] for i in played_cols)
+    top_k = ranked_df.head(k)["track_id"].tolist()
+    if not top_k:
+        return 0.0
+    hits = sum(1 for t in top_k if t in played_tids)
+    return hits / len(top_k)
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    from src.ranking.focus import rank_focus
+    from src.ranking.energy import rank_energy
+    from src.ranking.inspiration import rank_inspiration
+
+    users = [0, 5, 10, 15, 20]
+    print("Precision@10 across", len(users), "users:")
+    print(f"{'user':>5} {'baseline':>9} {'focus':>7} {'energy':>7} {'inspir':>7}")
+    for u in users:
+        c = generate_candidates(u)
+        if c.empty:
+            continue
+        base = precision_at_k(c.sort_values("hybrid_score", ascending=False), u)
+        f = precision_at_k(rank_focus(c), u)
+        e = precision_at_k(rank_energy(c), u)
+        i = precision_at_k(rank_inspiration(c), u)
+        print(f"{u:>5} {base:>9.3f} {f:>7.3f} {e:>7.3f} {i:>7.3f}")
+
+########## ./src/evaluation/run_all.py ##########
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from src.recommender import generate_candidates
+from src.ranking.focus import rank_focus
+from src.ranking.energy import rank_energy
+from src.ranking.inspiration import rank_inspiration
+from src.evaluation.precision import precision_at_k
+from src.evaluation.diversity import intra_list_diversity
+from src.evaluation.mood_match import mood_match
+
+N_USERS = 60
+users = list(range(N_USERS))
+
+rows = []
+for u in users:
+    c = generate_candidates(u)
+    if c.empty:
+        continue
+    base = c.sort_values("hybrid_score", ascending=False)
+    f = rank_focus(c)
+    e = rank_energy(c)
+    i = rank_inspiration(c)
+    rows.append({
+        "prec_base": precision_at_k(base, u), "prec_focus": precision_at_k(f, u),
+        "prec_energy": precision_at_k(e, u), "prec_insp": precision_at_k(i, u),
+        "ild_base": intra_list_diversity(base), "ild_focus": intra_list_diversity(f),
+        "ild_energy": intra_list_diversity(e), "ild_insp": intra_list_diversity(i),
+        "mm_focus_on_focus": mood_match(f, "focus"), "mm_base_on_focus": mood_match(base, "focus"),
+        "mm_energy_on_energy": mood_match(e, "energy"), "mm_base_on_energy": mood_match(base, "energy"),
+    })
+
+df = pd.DataFrame(rows)
+print("Evaluated", len(df), "users")
+means = df.mean()
+means.to_csv("results/evaluation_results.csv")
+print("\nMean results:")
+print(means.round(3).to_string())
+
+# Chart 1: Precision@10 by mode
+plt.figure(figsize=(8,5))
+vals = [means["prec_base"], means["prec_focus"], means["prec_energy"], means["prec_insp"]]
+plt.bar(["Baseline","Focus","Energy","Inspiration"], vals, color=["gray","steelblue","coral","seagreen"])
+plt.ylabel("Precision@10"); plt.title("Precision@10 by Mode (avg over %d users)" % len(df))
+plt.tight_layout(); plt.savefig("results/eval_precision.png", dpi=120); plt.close()
+
+# Chart 2: Intra-List Diversity by mode
+plt.figure(figsize=(8,5))
+vals = [means["ild_base"], means["ild_focus"], means["ild_energy"], means["ild_insp"]]
+plt.bar(["Baseline","Focus","Energy","Inspiration"], vals, color=["gray","steelblue","coral","seagreen"])
+plt.ylabel("Intra-List Diversity"); plt.title("Diversity by Mode (avg over %d users)" % len(df))
+plt.tight_layout(); plt.savefig("results/eval_diversity.png", dpi=120); plt.close()
+
+# Chart 3: Mood-Match - each mode vs baseline on its own target
+plt.figure(figsize=(8,5))
+labels = ["Focus target","Energy target"]
+base_vals = [means["mm_base_on_focus"], means["mm_base_on_energy"]]
+mode_vals = [means["mm_focus_on_focus"], means["mm_energy_on_energy"]]
+x = np.arange(len(labels)); w = 0.35
+plt.bar(x - w/2, base_vals, w, label="Baseline", color="gray")
+plt.bar(x + w/2, mode_vals, w, label="Mode-aware", color="mediumpurple")
+plt.xticks(x, labels); plt.ylabel("Mood-Match (cosine)")
+plt.title("Mode-Appropriateness: Mode-aware vs Baseline (avg over %d users)" % len(df))
+plt.legend(); plt.tight_layout(); plt.savefig("results/eval_mood_match.png", dpi=120); plt.close()
+
+print("\nSaved: eval_precision.png, eval_diversity.png, eval_mood_match.png + evaluation_results.csv")
+
+########## ./src/explanation/__init__.py ##########
+
+########## ./src/explanation/explain.py ##########
+import os
+
+def _load_key():
+    # 1. Streamlit secrets (deployed app)
+    try:
+        import streamlit as st
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+    # 2. .env file (local development)
+    try:
+        with open(".env") as f:
+            for line in f:
+                if line.strip().startswith("GEMINI_API_KEY="):
+                    return line.strip().split("=", 1)[1]
+    except Exception:
+        pass
+    # 3. environment variable
+    return os.getenv("GEMINI_API_KEY")
+
+_API_KEY = _load_key()
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None and _API_KEY:
+        try:
+            from google import genai
+            _client = genai.Client(api_key=_API_KEY)
+        except Exception:
+            _client = None
+    return _client
+
+
+def _template_explanation(track, mode):
+    name = track.get("name", "This track")
+    e = track.get("energy", 0)
+    t = track.get("tempo", 0)
+    if mode == "Focus":
+        return f"{name} is a calm, gentle pick, easy to concentrate to and right in line with your taste."
+    if mode == "Energy":
+        return f"{name} brings the energy up with a driving, upbeat feel to keep you moving, and it matches your taste."
+    if mode == "Inspiration":
+        acc = track.get("acclaim_score", 0) or 0
+        return f"{name} is a critically loved gem worth discovering, aligned beautifully with the artists you enjoy."
+    return f"{name} matches your taste profile."
+
+
+def explain(track, mode):
+    client = _get_client()
+    if client is None:
+        return _template_explanation(track, mode)
+    signals = (
+        f"Mode: {mode}. Track: {track.get('name')} by {track.get('artist')}. "
+        f"energy={track.get('energy'):.2f}, tempo={track.get('tempo'):.0f}, "
+        f"valence={track.get('valence'):.2f}, acousticness={track.get('acousticness'):.2f}, "
+        f"instrumentalness={track.get('instrumentalness'):.2f}, "
+        f"acclaim_score={track.get('acclaim_score', 0) or 0:.2f}, "
+        f"taste_match={track.get('hybrid_score', 0):.2f}"
+    )
+    prompt = (
+        "You are a warm, music-loving friend explaining why a song was recommended. "
+        "Use ONLY the signals provided - never invent facts about the song, artist, lyrics, or meaning. "
+        "Write ONE natural, inviting sentence (max 25 words). Vary your phrasing - avoid starting every "
+        "explanation the same way, and avoid listing raw numbers like 'energy 0.54'. Instead describe the "
+        "feel (calm, upbeat, uplifting, mellow) and connect it to the listener's mode and taste. "
+        "Sound human and appealing, not technical.\n\n"
+        f"Signals: {signals}"
+    )
+    try:
+        resp = client.models.generate_content(
+            model="gemini-flash-latest", contents=prompt
+        )
+        text = (resp.text or "").strip()
+        return text if text else _template_explanation(track, mode)
+    except Exception:
+        return _template_explanation(track, mode)
+
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates_from_artists
+    from src.ranking.focus import rank_focus
+    cands = generate_candidates_from_artists(["Radiohead", "Coldplay"])
+    ranked = rank_focus(cands)
+    print("Testing explanations (Focus mode):\n")
+    for _, row in ranked.head(3).iterrows():
+        print("-", explain(row.to_dict(), "Focus"))
+
+########## ./src/make_acclaim_template.py ##########
+import pandas as pd
+
+music = pd.read_csv("data/processed/music_clean.csv")
+
+# Top 150 artists by track count (the ones users will actually encounter)
+top_artists = music["artist"].value_counts().head(150).index.tolist()
+
+template = pd.DataFrame({
+    "artist": top_artists,
+    "grammy_wins": 0,
+    "grammy_noms": 0,
+    "metacritic": 0,
+    "rolling_stone": 0,
+})
+
+template.to_csv("data/raw/acclaim_template.csv", index=False)
+print("Created acclaim_template.csv with", len(template), "artists")
+print("\nColumns:")
+print("  grammy_wins   - number of Grammy wins (integer)")
+print("  grammy_noms   - number of Grammy nominations (integer)")
+print("  metacritic    - average Metacritic critic score 0-100 (0 if unknown)")
+print("  rolling_stone - number of appearances on RS greatest lists (integer)")
+print("\nFirst 20 artists to fill:")
+print(template["artist"].head(20).to_string())
+
+########## ./src/merge_datasets.py ##########
+import pandas as pd
+
+FEATURES = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+print("Loading existing data...")
+existing = pd.read_csv("data/processed/music_clean.csv")
+print("Existing tracks:", len(existing))
+
+print("Loading new 114k dataset...")
+new = pd.read_csv("data/raw/spotify_114k.csv")
+print("New dataset tracks:", len(new))
+
+# Rename new dataset columns to match existing schema
+new = new.rename(columns={
+    "track_name": "name",
+    "artists": "artist",
+    "track_genre": "genre",
+})
+
+# Keep only columns we need (that exist in both)
+keep = ["track_id", "name", "artist", "genre", "year", "popularity"] + FEATURES
+# 'year' may not exist in new data; keep what's available
+new_cols = [c for c in keep if c in new.columns]
+new = new[new_cols].copy()
+
+# Drop rows missing critical fields
+new = new.dropna(subset=["name", "artist"] + FEATURES)
+new = new.drop_duplicates(subset=["name", "artist"])
+print("New after cleaning:", len(new))
+
+# Dedupe against existing: build a normalized key (lowercase artist+name)
+def key(df):
+    return (df["artist"].str.lower().str.strip() + " ::: " +
+            df["name"].str.lower().str.strip())
+
+existing_keys = set(key(existing))
+new["_key"] = key(new)
+new_unique = new[~new["_key"].isin(existing_keys)].drop(columns="_key")
+print("New unique tracks (not already in existing):", len(new_unique))
+
+# Merge: existing + new unique. Align columns.
+combined = pd.concat([existing, new_unique], ignore_index=True, sort=False)
+combined = combined.drop_duplicates(subset="track_id", keep="first")
+print("Combined total tracks:", len(combined))
+
+# Save expanded dataset (original stays untouched)
+combined.to_csv("data/processed/music_expanded.csv", index=False)
+print("Saved data/processed/music_expanded.csv")
+print("\nGenre breakdown (top 10):")
+print(combined["genre"].value_counts().head(10).to_string())
+
+########## ./src/ranking/__init__.py ##########
+
+########## ./src/ranking/energy.py ##########
+import numpy as np
+
+# Energy rewards high-arousal, upbeat, positive tracks.
+ENERGY_WEIGHTS = {
+    "energy": 0.40,
+    "tempo": 0.25,
+    "valence": 0.25,
+    "danceability": 0.10,
+}
+
+def energy_score(df):
+    score = np.zeros(len(df))
+    for feat, w in ENERGY_WEIGHTS.items():
+        score += w * df[feat].values
+    return score
+
+def rank_energy(df, mode_weight=0.6):
+    d = df.copy()
+    es = energy_score(d)
+    if es.max() - es.min() > 1e-9:
+        es = (es - es.min()) / (es.max() - es.min())
+    else:
+        es = np.zeros_like(es)
+    d["energy_mode_score"] = es
+    d["final_score"] = mode_weight * d["energy_mode_score"] + (1 - mode_weight) * d["hybrid_score"]
+    return d.sort_values("final_score", ascending=False).reset_index(drop=True)
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    cands = generate_candidates(0)
+    ranked = rank_energy(cands)
+    print("Top 10 ENERGY recommendations for user 0:")
+    cols = ["name", "artist", "energy", "tempo", "valence", "final_score"]
+    print(ranked[cols].head(10).to_string())
+
+########## ./src/ranking/focus.py ##########
+import numpy as np
+
+# Focus rewards concentration-friendly audio: instrumental, acoustic, calm, low speech.
+# Weights are a starting point (domain knowledge); tune via ablation later.
+FOCUS_WEIGHTS = {
+    "instrumentalness": 0.35,
+    "acousticness": 0.25,
+    "energy": -0.25,
+    "speechiness": -0.15,
+}
+
+def focus_score(df):
+    """Compute a 0-based Focus score from audio features (df already scaled 0-1 in features)."""
+    score = np.zeros(len(df))
+    for feat, w in FOCUS_WEIGHTS.items():
+        score += w * df[feat].values
+    return score
+
+def rank_focus(df, mode_weight=0.6):
+    """Re-rank candidate pool for Focus mode.
+    mode_weight balances Focus signal vs personal hybrid score."""
+    d = df.copy()
+    fs = focus_score(d)
+    # normalize focus score to 0-1 for fair blending
+    if fs.max() - fs.min() > 1e-9:
+        fs = (fs - fs.min()) / (fs.max() - fs.min())
+    else:
+        fs = np.zeros_like(fs)
+    d["focus_score"] = fs
+    d["final_score"] = mode_weight * d["focus_score"] + (1 - mode_weight) * d["hybrid_score"]
+    return d.sort_values("final_score", ascending=False).reset_index(drop=True)
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    cands = generate_candidates(0)
+    ranked = rank_focus(cands)
+    print("Top 10 FOCUS recommendations for user 0:")
+    cols = ["name", "artist", "instrumentalness", "energy", "final_score"]
+    print(ranked[cols].head(10).to_string())
+
+########## ./src/ranking/inspiration.py ##########
+import pandas as pd
+
+_acclaim = pd.read_csv("data/processed/acclaim_scores.csv")[["artist", "acclaim_score"]]
+
+def rank_inspiration(df, mode_weight=0.5):
+    d = df.copy()
+    # Attach acclaim score by artist; artists not in acclaim data get 0
+    d = d.merge(_acclaim, on="artist", how="left")
+    d["acclaim_score"] = d["acclaim_score"].fillna(0.0)
+    d["final_score"] = mode_weight * d["acclaim_score"] + (1 - mode_weight) * d["hybrid_score"]
+    return d.sort_values("final_score", ascending=False).reset_index(drop=True)
+
+if __name__ == "__main__":
+    from src.recommender import generate_candidates
+    cands = generate_candidates(0)
+    ranked = rank_inspiration(cands)
+    print("Top 10 INSPIRATION recommendations for user 0:")
+    cols = ["name", "artist", "acclaim_score", "hybrid_score", "final_score"]
+    print(ranked[cols].head(10).to_string())
+
+########## ./src/rebuild_expanded.py ##########
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+import pickle
+
+FEATURES = ["danceability", "energy", "speechiness", "acousticness",
+            "instrumentalness", "valence", "tempo"]
+
+print("Loading expanded data...")
+m = pd.read_csv("data/processed/music_expanded.csv", low_memory=False)
+print("Before filtering:", len(m))
+
+# Remove non-music categories that produce odd recommendations
+non_music = ["comedy", "study", "sleep", "ambient", "children", "disney", "kids"]
+m = m[~m["genre"].astype(str).str.lower().isin(non_music)]
+m = m.dropna(subset=["name", "artist"] + FEATURES).drop_duplicates(subset="track_id")
+m = m.reset_index(drop=True)
+print("After filtering:", len(m))
+
+# Save the cleaned expanded music file
+m.to_csv("data/processed/music_expanded_clean.csv", index=False)
+
+# Rebuild content model on expanded data
+scaler = MinMaxScaler()
+feature_matrix = scaler.fit_transform(m[FEATURES])
+with open("data/processed/content_model_expanded.pkl", "wb") as f:
+    pickle.dump({"feature_matrix": feature_matrix, "scaler": scaler,
+                 "features": FEATURES, "track_ids": m["track_id"].tolist()}, f)
+print("Saved expanded content model.")
+print("Final track count:", len(m), "| Artists:", m["artist"].nunique())
+
+########## ./src/recommender.py ##########
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Load everything once at import
+import os
+_cf = None
+if os.path.exists("data/processed/als_model.pkl"):
+    with open("data/processed/als_model.pkl", "rb") as f:
+        _cf = pickle.load(f)
+with open("data/processed/content_model_expanded.pkl", "rb") as f:
+    _cb = pickle.load(f)
+_music = pd.read_csv("data/processed/music_expanded_clean.csv", low_memory=False).reset_index(drop=True)
+
+_model = _cf["model"] if _cf else None
+_matrix = _cf["matrix"] if _cf else None
+_track_map = _cf["track_map"] if _cf else None
+_feat = _cb["feature_matrix"]
+_cid_to_row = {tid: i for i, tid in enumerate(_cb["track_ids"])}
+_features = _cb["features"]
+
+def _normalize(x):
+    x = np.asarray(x, dtype=float)
+    if x.max() - x.min() < 1e-9:
+        return np.zeros_like(x)
+    return (x - x.min()) / (x.max() - x.min())
+
+def generate_candidates(user_idx, alpha=0.5, n_candidates=150):
+    """Return a DataFrame of candidate tracks with hybrid score and audio features."""
+    cf_ids, cf_scores = _model.recommend(
+        user_idx, _matrix[user_idx], N=n_candidates * 3,
+        filter_already_liked_items=False)
+
+    played = _matrix[user_idx].indices
+    played_tids = [_track_map[i] for i in played]
+    played_rows = [_cid_to_row[t] for t in played_tids if t in _cid_to_row]
+    if not played_rows:
+        return pd.DataFrame()
+    user_profile = _feat[played_rows].mean(axis=0)
+
+    cand_tids = [_track_map[i] for i in cf_ids]
+    rows, cf_keep, content = [], [], []
+    for tid, cfs in zip(cand_tids, cf_scores):
+        r = _cid_to_row.get(tid)
+        if r is None:
+            continue
+        rows.append(tid)
+        cf_keep.append(cfs)
+        content.append(cosine_similarity([user_profile], [_feat[r]])[0][0])
+
+    cf_n = _normalize(cf_keep)
+    ct_n = _normalize(content)
+    hybrid = alpha * cf_n + (1 - alpha) * ct_n
+
+    df = pd.DataFrame({"track_id": rows, "hybrid_score": hybrid})
+    df = df.drop_duplicates(subset="track_id")
+    df = df.merge(_music, on="track_id", how="left")
+    df = df.dropna(subset=_features)
+    df = df.sort_values("hybrid_score", ascending=False).head(n_candidates)
+    return df.reset_index(drop=True)
+    print(cands[["name", "artist", "hybrid_score"]].head(10).to_string())
+
+
+def generate_candidates_from_artists(seed_artists, n_candidates=150):
+    """Cold-start: build a taste profile from chosen artists, return candidate pool.
+    Used for new app visitors who have no listening history."""
+    # Find all tracks by the seed artists
+    seed_rows = _music[_music["artist"].isin(seed_artists)]
+    if seed_rows.empty:
+        return pd.DataFrame()
+
+    # Build taste profile: average audio features of seed artists' tracks
+    seed_track_ids = seed_rows["track_id"].tolist()
+    seed_feat_rows = [_cid_to_row[t] for t in seed_track_ids if t in _cid_to_row]
+    if not seed_feat_rows:
+        return pd.DataFrame()
+    user_profile = _feat[seed_feat_rows].mean(axis=0)
+
+    # Score every track by similarity to the taste profile
+    sims = cosine_similarity([user_profile], _feat)[0]
+
+    df = _music.copy().reset_index(drop=True)
+    # align sims to music rows via track_id order in content model
+    sim_by_tid = {tid: sims[i] for i, tid in enumerate(_cb["track_ids"])}
+    df["hybrid_score"] = df["track_id"].map(sim_by_tid).fillna(0.0)
+
+    # Genre-matching: bias toward the genres of the seed artists
+    seed_genres = seed_rows["genre"].dropna().unique().tolist()
+    if seed_genres:
+        genre_matched = df[df["genre"].isin(seed_genres)]
+        # only apply if it leaves enough candidates, else fall back to all
+        if len(genre_matched) >= n_candidates:
+            df = genre_matched
+
+    # Set aside the best-scoring track from EACH seed artist to pin near the top
+    seed_own = df[df["artist"].isin(seed_artists)].dropna(subset=_features)
+    pinned = None
+    if not seed_own.empty:
+        pinned = (seed_own.sort_values("hybrid_score", ascending=False)
+                  .groupby("artist", as_index=False).head(1))
+
+    # Drop the seed artists' own tracks from the main pool (recommend NEW music)
+    df = df[~df["artist"].isin(seed_artists)]
+    df = df.dropna(subset=_features)
+    df = df.sort_values("hybrid_score", ascending=False).head(n_candidates)
+
+    # Pin the one seed-artist track at the top so users see an artist they picked
+    if pinned is not None:
+        df = pd.concat([pinned, df], ignore_index=True).head(n_candidates)
+
+    return df.reset_index(drop=True)
+
+
+if __name__ == "__main__":
+    print("\nCold-start test - seed artists: Radiohead, Coldplay")
+    c = generate_candidates_from_artists(["Radiohead", "Coldplay"])
+    print("Generated", len(c), "candidates")
+    print(c[["name", "artist", "hybrid_score"]].head(10).to_string())
+
+########## ./styling.py ##########
+import streamlit as st
+
+def inject_css():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap');
+
+    :root{
+      --mi-navy:#172033;
+      --mi-muted:#5A6478;
+      --mi-mauve:#B4A7C3;
+      --mi-rose:#E8BCC8;
+      --mi-sage:#A8C9BB;
+      --mi-peach:#F0B89A;
+      --mi-card:rgba(255,255,255,0.62);
+      --mi-card-strong:rgba(255,255,255,0.86);
+      --mi-border:rgba(255,255,255,0.75);
+      --mi-shadow:0 8px 24px rgba(23,32,51,0.07);
+      --mi-radius:18px;
+    }
+
+    .stApp{
+      background:linear-gradient(180deg,#F7FBFF 0%,#EEF3FC 45%,#F9EEF5 100%);
+      background-attachment:fixed;
+    }
+    header[data-testid="stHeader"]{background:transparent;}
+    [data-testid="stToolbar"]{right:12px;}
+    .block-container{max-width:720px;padding-top:2.2rem;padding-bottom:4rem;}
+
+    html,body,[class*="css"],.stApp,button,input,textarea,select{
+      font-family:'Quicksand',ui-rounded,-apple-system,sans-serif !important;
+      color:var(--mi-navy);
+    }
+    h1,h2,h3,h4{color:var(--mi-navy) !important;font-weight:700 !important;letter-spacing:-0.01em;}
+    h1{font-size:2rem !important;line-height:1.25 !important;}
+    h2{font-size:1.35rem !important;}
+    p,li,label,.stMarkdown{color:var(--mi-navy);line-height:1.6;}
+    [data-testid="stCaptionContainer"] p{color:var(--mi-muted) !important;font-size:0.86rem !important;}
+
+    .mi-card{
+      background:var(--mi-card);
+      border:1px solid var(--mi-border);
+      border-radius:var(--mi-radius);
+      box-shadow:var(--mi-shadow);
+      padding:16px 18px;
+      margin-bottom:12px;
+    }
+
+    .mi-badge{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:7px 16px;border-radius:999px;
+      font-size:0.78rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    }
+    .mi-badge.focus{background:rgba(168,201,187,0.28);color:#2F6B55;}
+    .mi-badge.energy{background:rgba(240,184,154,0.30);color:#A85A2A;}
+    .mi-badge.inspiration{background:rgba(232,188,200,0.32);color:#9B4A67;}
+
+    .mi-song{
+      background:var(--mi-card);
+      border:1px solid var(--mi-border);
+      border-radius:var(--mi-radius);
+      box-shadow:var(--mi-shadow);
+      padding:14px 16px;margin-bottom:10px;
+    }
+    .mi-song-top{display:flex;align-items:flex-start;gap:14px;}
+    .mi-rank{
+      flex:0 0 30px;height:30px;border-radius:10px;
+      background:rgba(180,167,195,0.22);color:#6B5E7D;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:700;font-size:0.85rem;
+    }
+    .mi-song-main{flex:1 1 auto;min-width:0;}
+    .mi-track{font-size:1.02rem;font-weight:700;color:var(--mi-navy);
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .mi-artist{font-size:0.85rem;color:var(--mi-muted);margin-top:2px;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .mi-metrics{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;}
+    .mi-metric{
+      background:rgba(255,255,255,0.72);
+      border:1px solid rgba(23,32,51,0.06);
+      border-radius:10px;padding:6px 10px;min-width:74px;
+    }
+    .mi-metric-label{font-size:0.66rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--mi-muted);}
+    .mi-metric-value{font-size:0.92rem;font-weight:700;color:var(--mi-navy);margin-top:1px;}
+    .mi-why{
+      margin-top:12px;padding-top:11px;
+      border-top:1px solid rgba(23,32,51,0.07);
+      font-size:0.87rem;line-height:1.55;color:#3A465C;
+    }
+    .mi-why b{color:var(--mi-navy);font-weight:700;}
+
+    .stButton>button,.stFormSubmitButton>button{
+      width:100%;
+      background:linear-gradient(90deg,#A9B6E8 0%,#B4A7C3 100%);
+      color:#fff !important;border:none;border-radius:14px;
+      padding:0.72rem 1.1rem;font-weight:700;font-size:1rem;
+      box-shadow:0 6px 18px rgba(180,167,195,0.38);
+      transition:transform 140ms ease-out, box-shadow 140ms ease-out, filter 140ms ease-out;
+    }
+    .stButton>button:hover,.stFormSubmitButton>button:hover{
+      filter:brightness(1.04);
+      box-shadow:0 8px 22px rgba(232,188,200,0.5);
+      transform:translateY(-1px);color:#fff !important;
+    }
+    .stButton>button:active{transform:translateY(0);}
+    .stButton>button[kind="secondary"]{
+      background:var(--mi-card-strong);color:var(--mi-navy) !important;
+      border:1px solid rgba(23,32,51,0.08);box-shadow:var(--mi-shadow);
+    }
+
+    [data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
+      background:var(--mi-card-strong);
+      border:1px solid rgba(23,32,51,0.10) !important;
+      border-radius:14px;min-height:48px;box-shadow:var(--mi-shadow);
+    }
+    [data-testid="stMultiSelect"] span[data-baseweb="tag"]{
+      background:var(--mi-mauve) !important;border-radius:999px;color:#fff !important;font-weight:600;
+    }
+
+    [data-testid="stRadio"]>div{gap:10px;}
+    [data-testid="stRadio"] label{
+      background:var(--mi-card);border:1px solid var(--mi-border);
+      border-radius:14px;padding:12px 14px;width:100%;
+      box-shadow:var(--mi-shadow);align-items:flex-start;
+      transition:border-color 140ms ease-out,background 140ms ease-out;
+    }
+    [data-testid="stRadio"] label:hover{background:var(--mi-card-strong);}
+    [data-testid="stRadio"] label p{font-weight:600;font-size:0.95rem;}
+    [data-testid="stRadio"] label:has(input:checked){
+      border-color:var(--mi-mauve);background:rgba(255,255,255,0.9);
+    }
+
+    [data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"]{
+      background:var(--mi-mauve) !important;box-shadow:0 2px 8px rgba(180,167,195,0.5);
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"]>div>div{background:var(--mi-mauve) !important;}
+    [data-testid="stSlider"] [data-testid="stTickBarMin"],
+    [data-testid="stSlider"] [data-testid="stTickBarMax"]{color:var(--mi-muted);font-weight:600;}
+
+    .stTextArea textarea,.stTextInput input{
+      background:var(--mi-card-strong);
+      border:1px solid rgba(23,32,51,0.10);
+      border-radius:14px;color:var(--mi-navy);padding:12px 14px;
+    }
+    .stTextArea textarea:focus,.stTextInput input:focus{
+      border-color:var(--mi-mauve);box-shadow:0 0 0 3px rgba(180,167,195,0.25);
+    }
+
+    .mi-complete{text-align:center;padding:26px 0;}
+    .mi-check{
+      width:92px;height:92px;border-radius:50%;margin:0 auto 20px;
+      background:linear-gradient(135deg,#A9B6E8 0%,#E8BCC8 100%);
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-size:44px;font-weight:700;
+      box-shadow:0 10px 30px rgba(180,167,195,0.45);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+########## ./theme.py ##########
+import streamlit as st
+
+CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+:root{
+  --bg-primary:#F7FAFF; --bg-secondary:#F6F0FF; --bg-tertiary:#FFF4FB;
+  --glass:rgba(255,255,255,0.60); --glass-strong:rgba(255,255,255,0.82); --glass-soft:rgba(255,255,255,0.42);
+  --border-glass:rgba(255,255,255,0.70); --border-hair:rgba(27,33,64,0.07);
+  --text-primary:#1B2140; --text-secondary:#5C6485; --text-tertiary:#8A91AC;
+  --accent-primary:#8A7FE8; --accent-primary-soft:#D0D1FF; --accent-secondary:#D46BB3; --accent-secondary-soft:#FFCBF2;
+  --focus-accent:#6E7BE8; --focus-soft:#D8DDFF; --focus-ink:#3B45A8;
+  --energy-accent:#D46BB3; --energy-soft:#FFCBF2; --energy-ink:#9E3B78;
+  --inspiration-accent:#9B6BE8; --inspiration-soft:#E5D3FF; --inspiration-ink:#6A3AAF;
+  --shadow-sm:0 2px 10px rgba(70,60,130,0.06); --shadow-md:0 8px 28px rgba(70,60,130,0.09);
+  --shadow-lg:0 16px 48px rgba(70,60,130,0.13); --glow:0 0 0 4px rgba(138,127,232,0.16);
+  --r-sm:12px; --r-md:16px; --r-lg:22px; --r-xl:28px; --ease:cubic-bezier(0.23,1,0.32,1);
+}
+.stApp{
+  background:
+    radial-gradient(760px 520px at 12% -6%, rgba(200,231,255,0.55), transparent 62%),
+    radial-gradient(680px 480px at 92% 8%, rgba(243,196,251,0.42), transparent 62%),
+    radial-gradient(720px 600px at 50% 108%, rgba(208,209,255,0.45), transparent 62%),
+    linear-gradient(135deg,var(--bg-primary) 0%,var(--bg-secondary) 52%,var(--bg-tertiary) 100%);
+  background-attachment:fixed;
+}
+header[data-testid="stHeader"]{background:transparent!important;}
+[data-testid="stDecoration"]{display:none;}
+.block-container{max-width:960px;padding:2.4rem 1.4rem 5rem;}
+html,body,.stApp,button,input,textarea,select,[class*="css"]{
+  font-family:'Plus Jakarta Sans',ui-sans-serif,-apple-system,sans-serif!important;
+  color:var(--text-primary); -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{color:var(--text-primary)!important;letter-spacing:-0.02em;}
+h1{font-size:2.5rem!important;font-weight:800!important;line-height:1.14!important;}
+h2{font-size:1.5rem!important;font-weight:700!important;}
+h3{font-size:1.15rem!important;font-weight:700!important;}
+p,li,label{color:var(--text-primary);line-height:1.62;}
+[data-testid="stCaptionContainer"] p{color:var(--text-secondary)!important;font-size:.88rem!important;}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:7px 15px;border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.06em;border:1px solid var(--border-glass);}
+.badge.focus{background:var(--focus-soft);color:var(--focus-ink);}
+.badge.energy{background:var(--energy-soft);color:var(--energy-ink);}
+.badge.inspiration{background:var(--inspiration-soft);color:var(--inspiration-ink);}
+.song-card{background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--border-glass);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:18px 20px;margin-bottom:6px;transition:transform 180ms var(--ease),box-shadow 180ms var(--ease);}
+.song-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);}
+.song-card.is-seed{border-color:rgba(138,127,232,0.42);box-shadow:var(--shadow-md);}
+.song-head{display:flex;align-items:center;gap:16px;}
+.song-rank{flex:0 0 34px;height:34px;border-radius:11px;background:var(--glass-strong);border:1px solid var(--border-hair);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;color:var(--accent-primary);}
+.song-meta{flex:1 1 auto;min-width:0;}
+.song-title{font-size:1.08rem;font-weight:700;line-height:1.3;}
+.song-artist{font-size:.9rem;color:var(--text-secondary);margin-top:2px;}
+.song-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}
+.explanation-card{background:linear-gradient(135deg,rgba(255,255,255,0.78),rgba(243,241,255,0.62));border:1px solid var(--border-glass);border-radius:var(--r-md);padding:17px 19px;margin-top:14px;}
+.explanation-card .exp-label{font-size:.68rem;font-weight:700;letter-spacing:.12em;color:var(--accent-primary);margin-bottom:8px;}
+.explanation-card .exp-body{font-size:.93rem;line-height:1.62;color:#3D4568;}
+.stButton>button,.stFormSubmitButton>button,[data-testid="stLinkButton"]>a{width:100%;border-radius:14px;font-weight:700;font-size:.97rem;padding:.68rem 1.1rem;border:1px solid var(--border-glass);background:var(--glass-strong);color:var(--text-primary)!important;box-shadow:var(--shadow-sm);text-decoration:none!important;transition:transform 150ms var(--ease),box-shadow 150ms var(--ease),background 150ms var(--ease);}
+.stButton>button:hover,.stFormSubmitButton>button:hover,[data-testid="stLinkButton"]>a:hover{transform:translateY(-2px);box-shadow:var(--shadow-md);background:#fff;}
+.stButton>button[kind="primary"]{background:linear-gradient(90deg,#9B93F0 0%,#C9A8F0 55%,#E9A9D6 100%);color:#fff!important;border:none;box-shadow:0 8px 24px rgba(138,127,232,0.34);}
+[class*="st-key-spotify"] a,[class*="st-key-spotify"] button{background:rgba(29,185,84,0.11)!important;border:1px solid rgba(29,185,84,0.35)!important;color:#0F7C39!important;font-size:.87rem!important;box-shadow:none!important;}
+[class*="st-key-youtube"] a,[class*="st-key-youtube"] button{background:rgba(226,63,63,0.09)!important;border:1px solid rgba(226,63,63,0.30)!important;color:#B02626!important;font-size:.87rem!important;box-shadow:none!important;}
+[class*="st-key-like"] button,[class*="st-key-dislike"] button{background:var(--glass-soft)!important;border:1px solid var(--border-hair)!important;color:var(--text-secondary)!important;font-size:.87rem!important;font-weight:600!important;box-shadow:none!important;border-radius:999px!important;}
+[class*="st-key-like"] button:hover{background:rgba(208,209,255,0.5)!important;color:var(--focus-ink)!important;}
+[class*="st-key-dislike"] button:hover{background:rgba(255,203,242,0.5)!important;color:var(--energy-ink)!important;}
+[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{background:var(--glass-strong)!important;border:1px solid var(--border-glass)!important;border-radius:14px!important;min-height:52px;box-shadow:var(--shadow-sm);}
+[data-testid="stMultiSelect"] span[data-baseweb="tag"]{background:linear-gradient(90deg,#A79CF0,#D6A6E8)!important;border-radius:999px!important;color:#fff!important;font-weight:600;}
+[data-testid="stMultiSelect"] span[data-baseweb="tag"] svg{fill:#fff;}
+.stTextInput input,.stTextArea textarea{background:var(--glass-strong)!important;border:1px solid var(--border-glass)!important;border-radius:14px!important;color:var(--text-primary)!important;padding:12px 15px!important;}
+.stTextArea textarea:focus,.stTextInput input:focus{border-color:var(--accent-primary)!important;box-shadow:var(--glow)!important;}
+[data-testid="stRadio"]>div{gap:11px;}
+[data-testid="stRadio"] label{background:var(--glass-soft);border:1px solid var(--border-glass);border-radius:var(--r-md);padding:14px 16px;width:100%;box-shadow:var(--shadow-sm);align-items:flex-start;transition:background 160ms var(--ease),border-color 160ms var(--ease),transform 160ms var(--ease);}
+[data-testid="stRadio"] label:hover{background:var(--glass);transform:translateY(-1px);}
+[data-testid="stRadio"] label:has(input:checked){background:var(--glass-strong);border-color:var(--accent-primary);box-shadow:var(--shadow-md),var(--glow);}
+[data-testid="stRadio"] label p{font-weight:600;}
+[data-testid="stSlider"] div[role="slider"]{background:var(--accent-primary)!important;box-shadow:0 2px 10px rgba(138,127,232,0.5)!important;}
+[data-testid="stSlider"] [data-baseweb="slider"]>div>div{background:var(--accent-primary)!important;}
+[data-testid="stTickBarMin"],[data-testid="stTickBarMax"]{color:var(--text-tertiary)!important;font-weight:600;}
+[data-testid="stAlert"]{background:var(--glass-strong)!important;border:1px solid var(--border-glass)!important;border-radius:var(--r-md)!important;color:var(--text-primary)!important;box-shadow:var(--shadow-sm);}
+hr{border-color:var(--border-hair)!important;}
+.mi-complete{text-align:center;padding:34px 0 10px;}
+.mi-check{width:104px;height:104px;border-radius:50%;margin:0 auto 24px;background:linear-gradient(135deg,#A79CF0,#D8BBFF 45%,#FFCBF2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:46px;box-shadow:0 14px 40px rgba(138,127,232,0.38);}
+@media (max-width:640px){.block-container{padding:1.4rem .9rem 3.5rem;}h1{font-size:1.95rem!important;}.song-head{gap:12px;}.song-title{white-space:normal;}}
+</style>
+"""
+
+def inject_theme() -> None:
+    st.markdown(CSS, unsafe_allow_html=True)
+
