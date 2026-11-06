@@ -62,9 +62,15 @@ def generate_candidates(user_idx, alpha=0.5, n_candidates=150):
     print(cands[["name", "artist", "hybrid_score"]].head(10).to_string())
 
 
-def generate_candidates_from_artists(seed_artists, n_candidates=150):
+def generate_candidates_from_artists(seed_artists, n_candidates=150, profile_artists=None):
     """Cold-start: build a taste profile from chosen artists, return candidate pool.
-    Used for new app visitors who have no listening history."""
+    Used for new app visitors who have no listening history.
+
+    profile_artists (optional): artists a signed-in user has liked in past
+    sessions. Their tracks are blended INTO the taste profile to personalise
+    recommendations, but they are NOT pinned and NOT removed from discovery.
+    When None (guests, evaluation, every existing call) behaviour is unchanged.
+    """
     # Find all tracks by the seed artists
     seed_rows = _music[_music["artist"].isin(seed_artists)]
     if seed_rows.empty:
@@ -73,9 +79,19 @@ def generate_candidates_from_artists(seed_artists, n_candidates=150):
     # Build taste profile: average audio features of seed artists' tracks
     seed_track_ids = seed_rows["track_id"].tolist()
     seed_feat_rows = [_cid_to_row[t] for t in seed_track_ids if t in _cid_to_row]
-    if not seed_feat_rows:
+
+    # Account personalisation: enrich the profile with previously-liked artists.
+    profile_rows = list(seed_feat_rows)
+    if profile_artists:
+        extra_rows = _music[_music["artist"].isin(profile_artists)]
+        for t in extra_rows["track_id"].tolist():
+            r = _cid_to_row.get(t)
+            if r is not None:
+                profile_rows.append(r)
+
+    if not profile_rows:
         return pd.DataFrame()
-    user_profile = _feat[seed_feat_rows].mean(axis=0)
+    user_profile = _feat[profile_rows].mean(axis=0)
 
     # Score every track by similarity to the taste profile
     sims = cosine_similarity([user_profile], _feat)[0]
