@@ -201,7 +201,7 @@ div[data-testid="stVerticalBlock"] {
 
 .mi-description {
     max-width: 610px;
-    margin: 0 auto;
+    margin: 0 auto !important;
     color: #85809F;
     font-size: .86rem;
     line-height: 1.85;
