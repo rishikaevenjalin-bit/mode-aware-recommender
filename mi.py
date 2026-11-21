@@ -205,6 +205,7 @@ div[data-testid="stVerticalBlock"] {
     color: #85809F;
     font-size: .86rem;
     line-height: 1.85;
+    text-align: center;
 }
 
 .mi-decor {
