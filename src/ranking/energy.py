@@ -8,10 +8,19 @@ ENERGY_WEIGHTS = {
     "danceability": 0.10,
 }
 
+def _unit(values):
+    """Min-max scale a feature column to 0-1 so weights are comparable."""
+    v = np.asarray(values, dtype=float)
+    rng = v.max() - v.min()
+    return (v - v.min()) / rng if rng > 1e-9 else np.zeros_like(v)
+
 def energy_score(df):
+    # Scale every feature to 0-1 before weighting. tempo is raw BPM (~0-240),
+    # so without this it would dominate and the score would ignore energy,
+    # valence and danceability entirely.
     score = np.zeros(len(df))
     for feat, w in ENERGY_WEIGHTS.items():
-        score += w * df[feat].values
+        score += w * _unit(df[feat].values)
     return score
 
 def rank_energy(df, mode_weight=0.6):
