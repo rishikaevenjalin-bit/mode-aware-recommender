@@ -19,6 +19,7 @@ from src.db.database import (
     create_user,
     authenticate,
     get_user_liked_artists,
+    get_user_liked_tracks,
 )
 import mi
 
@@ -119,8 +120,9 @@ def reset_session():
             new_session_id() if key == "session_id" else default_value
         )
 
-    # Signed-in users go back to the welcome screen, not the landing page.
-    st.session_state.step = "welcome" if st.session_state.get("user_id") else "intro"
+    # Signed-in users stay logged in and return to the mix setup page;
+    # only guests go back to the landing page.
+    st.session_state.step = "setup" if st.session_state.get("user_id") else "intro"
     st.rerun()
 
 
@@ -137,13 +139,15 @@ def go_to(step):
 
 
 def account_bar():
-    """Small signed-in indicator with a log-out control."""
+    """Signed-in indicator with links to the account page and manual log-out."""
     if not st.session_state.get("user_id"):
         return
-    left, right = st.columns([3, 1])
+    left, mid, right = st.columns([2.2, 1, 1])
     with left:
-        st.caption(f"✦ Signed in as **{st.session_state.username}** — "
-                   "recommendations personalise as you like songs.")
+        st.caption(f"✦ Signed in as **{st.session_state.username}**")
+    with mid:
+        if st.button("My account", key="account_btn", use_container_width=True):
+            go_to("account")
     with right:
         if st.button("Log out", key="logout_btn", use_container_width=True):
             do_logout()
@@ -797,5 +801,56 @@ elif st.session_state.step == "done":
             use_container_width=True,
         ):
             reset_session()
+
+    render_footer()
+
+
+# ── Account (personal view) ─────────────────────────────────────────────────
+
+elif st.session_state.step == "account":
+
+    mi.theme()
+    mi.topbar()
+
+    if not st.session_state.get("user_id"):
+        go_to("auth")
+
+    mi.section_heading(
+        f"Hi, {st.session_state.username}",
+        "Your personal space. The songs you like shape your future recommendations.",
+    )
+
+    liked = get_user_liked_tracks(st.session_state.user_id)
+    liked_artists = get_user_liked_artists(st.session_state.user_id)
+
+    m1, m2 = st.columns(2)
+    m1.metric("Songs liked", len(liked))
+    m2.metric("Artists you love", len(liked_artists))
+
+    st.markdown("### ♡  Songs you've liked")
+    if liked:
+        with st.container(border=True):
+            for t in liked:
+                st.markdown(
+                    f"<div style='padding:6px 2px'>♫ <b>{mi._e(t['track_name'])}</b> "
+                    f"— {mi._e(t['artist'])} "
+                    f"<span style='color:#8a86a8;font-size:0.82em'>· "
+                    f"{t['mode']}</span></div>",
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.caption("No liked songs yet. Tap the heart on tracks in your mixes "
+                   "and they'll appear here, and help tune your recommendations.")
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    c1, spacer, c2 = st.columns([1, 0.4, 1])
+    with c1:
+        if st.button("← Make a new mix", use_container_width=True):
+            go_to("setup")
+    with c2:
+        if st.button("Log out", type="primary", use_container_width=True,
+                     key="account_logout"):
+            do_logout()
 
     render_footer()

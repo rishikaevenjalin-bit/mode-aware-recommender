@@ -249,6 +249,18 @@ def get_user_liked_artists(user_id, limit=20):
     return [r["artist"] for r in rows]
 
 
+def get_user_liked_tracks(user_id, limit=100):
+    """Distinct tracks a signed-in user has liked, most recent first."""
+    if not user_id:
+        return []
+    return _query(
+        "SELECT track_name, artist, mode, MAX(timestamp) AS ts FROM track_feedback "
+        "WHERE user_id = :uid AND LOWER(feedback) = 'like' AND track_name IS NOT NULL "
+        "GROUP BY track_name, artist, mode ORDER BY ts DESC LIMIT :lim",
+        {"uid": user_id, "lim": limit},
+    )
+
+
 if __name__ == "__main__":
     init_db()
     init_track_feedback()
