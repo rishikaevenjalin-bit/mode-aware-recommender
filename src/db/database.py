@@ -1,26 +1,70 @@
-import sqlite3
 import json
 import uuid
 import hashlib
 import os
 from datetime import datetime
 
-DB_PATH = "music_rec.db"
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 
 
-# ── Schema helpers ──────────────────────────────────────────────────────────
+# ── Engine selection ────────────────────────────────────────────────────────
+# If a DATABASE_URL is configured (Streamlit secret or environment variable),
+# the app uses that persistent database (e.g. Supabase Postgres). Otherwise it
+# falls back to a local SQLite file for development.
 
-def _ensure_column(conn, table, column, decl):
-    """Add a column to an existing table if it isn't already there."""
-    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+def _database_url():
+    url = None
+    try:
+        import streamlit as st
+        if "DATABASE_URL" in st.secrets:
+            url = st.secrets["DATABASE_URL"]
+    except Exception:
+        pass
+    if not url:
+        url = os.environ.get("DATABASE_URL")
+    return url
+
+
+def _make_engine():
+    url = _database_url()
+    if url:
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return create_engine(
+            url,
+            poolclass=NullPool,           # safe with Supabase transaction pooler
+            connect_args={"sslmode": "require"},
+        )
+    return create_engine("sqlite:///music_rec.db")
+
+
+_engine = _make_engine()
+_IS_PG = _engine.dialect.name == "postgresql"
+
+
+def _exec(sql, params=None):
+    with _engine.begin() as conn:
+        conn.execute(text(sql), params or {})
+
+
+def _query(sql, params=None):
+    with _engine.connect() as conn:
+        rows = conn.execute(text(sql), params or {}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def _migrate_sqlite_column(table, column, decl):
+    """Add a missing column to an existing SQLite table (local dev only)."""
+    cols = [c["name"] for c in _query(f"PRAGMA table_info({table})")]
     if column not in cols:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        _exec(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
+
+# ── Sessions ────────────────────────────────────────────────────────────────
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
+    _exec("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
             mode TEXT,
@@ -34,47 +78,62 @@ def init_db():
             user_id TEXT
         )
     """)
-    _ensure_column(conn, "sessions", "user_id", "TEXT")  # migrate old databases
-    conn.commit()
-    conn.close()
+    if not _IS_PG:
+        _migrate_sqlite_column("sessions", "user_id", "TEXT")
+
 
 def new_session_id():
     return str(uuid.uuid4())
 
+
 def save_session(session_id, mode, seed_artists, recommendations,
                  rating_relevance, rating_mode_fit, rating_explanation, comment,
                  user_id=None):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     rec_names = [f"{r['name']} - {r['artist']}" for r in recommendations]
-    c.execute("""
-        INSERT OR REPLACE INTO sessions
-        (session_id, mode, seed_artists, recommendations,
-         rating_relevance, rating_mode_fit, rating_explanation, comment,
-         timestamp, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        session_id, mode, json.dumps(seed_artists), json.dumps(rec_names),
-        rating_relevance, rating_mode_fit, rating_explanation, comment,
-        datetime.now().isoformat(), user_id,
-    ))
-    conn.commit()
-    conn.close()
+    params = {
+        "session_id": session_id, "mode": mode,
+        "seed_artists": json.dumps(seed_artists),
+        "recommendations": json.dumps(rec_names),
+        "rating_relevance": rating_relevance,
+        "rating_mode_fit": rating_mode_fit,
+        "rating_explanation": rating_explanation,
+        "comment": comment, "timestamp": datetime.now().isoformat(),
+        "user_id": user_id,
+    }
+    cols = ("session_id, mode, seed_artists, recommendations, rating_relevance, "
+            "rating_mode_fit, rating_explanation, comment, timestamp, user_id")
+    vals = (":session_id, :mode, :seed_artists, :recommendations, :rating_relevance, "
+            ":rating_mode_fit, :rating_explanation, :comment, :timestamp, :user_id")
+    if _IS_PG:
+        sql = f"""
+            INSERT INTO sessions ({cols}) VALUES ({vals})
+            ON CONFLICT (session_id) DO UPDATE SET
+                mode = EXCLUDED.mode,
+                seed_artists = EXCLUDED.seed_artists,
+                recommendations = EXCLUDED.recommendations,
+                rating_relevance = EXCLUDED.rating_relevance,
+                rating_mode_fit = EXCLUDED.rating_mode_fit,
+                rating_explanation = EXCLUDED.rating_explanation,
+                comment = EXCLUDED.comment,
+                timestamp = EXCLUDED.timestamp,
+                user_id = EXCLUDED.user_id
+        """
+    else:
+        sql = f"INSERT OR REPLACE INTO sessions ({cols}) VALUES ({vals})"
+    _exec(sql, params)
+
 
 def get_all_sessions():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM sessions").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    return _query("SELECT * FROM sessions")
 
+
+# ── Per-track feedback ──────────────────────────────────────────────────────
 
 def init_track_feedback():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
+    id_decl = "SERIAL PRIMARY KEY" if _IS_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    _exec(f"""
         CREATE TABLE IF NOT EXISTS track_feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_decl},
             session_id TEXT,
             mode TEXT,
             track_name TEXT,
@@ -84,37 +143,30 @@ def init_track_feedback():
             user_id TEXT
         )
     """)
-    _ensure_column(conn, "track_feedback", "user_id", "TEXT")  # migrate old databases
-    conn.commit()
-    conn.close()
+    if not _IS_PG:
+        _migrate_sqlite_column("track_feedback", "user_id", "TEXT")
 
 
 def save_track_feedback(session_id, mode, track_name, artist, feedback, user_id=None):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO track_feedback (session_id, mode, track_name, artist, feedback,
-                                    timestamp, user_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (session_id, mode, track_name, artist, feedback,
-          datetime.now().isoformat(), user_id))
-    conn.commit()
-    conn.close()
+    _exec("""
+        INSERT INTO track_feedback
+            (session_id, mode, track_name, artist, feedback, timestamp, user_id)
+        VALUES (:session_id, :mode, :track_name, :artist, :feedback, :timestamp, :user_id)
+    """, {
+        "session_id": session_id, "mode": mode, "track_name": track_name,
+        "artist": artist, "feedback": feedback,
+        "timestamp": datetime.now().isoformat(), "user_id": user_id,
+    })
 
 
 def get_all_track_feedback():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT * FROM track_feedback").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    return _query("SELECT * FROM track_feedback")
 
 
 # ── Accounts (optional sign-in) ─────────────────────────────────────────────
 
 def init_users():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    _exec("""
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
             username TEXT UNIQUE,
@@ -123,8 +175,6 @@ def init_users():
             created_at TEXT
         )
     """)
-    conn.commit()
-    conn.close()
 
 
 def _hash_password(password, salt):
@@ -142,82 +192,63 @@ def create_user(username, password):
     if len(password or "") < 4:
         return False, "Password must be at least 4 characters."
 
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        exists = conn.execute(
-            "SELECT 1 FROM users WHERE username = ? COLLATE NOCASE", (username,)
-        ).fetchone()
-        if exists:
-            return False, "That username is already taken."
+    exists = _query(
+        "SELECT 1 AS one FROM users WHERE LOWER(username) = LOWER(:u)",
+        {"u": username},
+    )
+    if exists:
+        return False, "That username is already taken."
 
-        user_id = str(uuid.uuid4())
-        salt = os.urandom(16).hex()
-        pw_hash = _hash_password(password, salt)
-        conn.execute(
-            "INSERT INTO users (user_id, username, password_hash, salt, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (user_id, username, pw_hash, salt, datetime.now().isoformat()),
-        )
-        conn.commit()
-        return True, user_id
-    finally:
-        conn.close()
+    user_id = str(uuid.uuid4())
+    salt = os.urandom(16).hex()
+    pw_hash = _hash_password(password, salt)
+    _exec(
+        "INSERT INTO users (user_id, username, password_hash, salt, created_at) "
+        "VALUES (:user_id, :username, :pw, :salt, :created)",
+        {"user_id": user_id, "username": username, "pw": pw_hash,
+         "salt": salt, "created": datetime.now().isoformat()},
+    )
+    return True, user_id
 
 
 def authenticate(username, password):
     """Return user_id on success, or None on failure."""
     username = (username or "").strip()
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT user_id, password_hash, salt FROM users "
-            "WHERE username = ? COLLATE NOCASE", (username,)
-        ).fetchone()
-    finally:
-        conn.close()
-    if not row:
+    rows = _query(
+        "SELECT user_id, password_hash, salt FROM users "
+        "WHERE LOWER(username) = LOWER(:u)", {"u": username},
+    )
+    if not rows:
         return None
-    user_id, stored_hash, salt = row
-    if _hash_password(password, salt) == stored_hash:
-        return user_id
+    row = rows[0]
+    if _hash_password(password, row["salt"]) == row["password_hash"]:
+        return row["user_id"]
     return None
 
 
 def get_username(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT username FROM users WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    finally:
-        conn.close()
-    return row[0] if row else None
+    rows = _query("SELECT username FROM users WHERE user_id = :uid", {"uid": user_id})
+    return rows[0]["username"] if rows else None
 
 
 def get_user_liked_artists(user_id, limit=20):
-    """Artists a signed-in user has liked before, most-liked first.
-    Used to personalise recommendations for returning users."""
+    """Artists a signed-in user has liked before, most-liked first."""
     if not user_id:
         return []
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        rows = conn.execute(
-            "SELECT artist, COUNT(*) AS c FROM track_feedback "
-            "WHERE user_id = ? AND LOWER(feedback) = 'like' AND artist IS NOT NULL "
-            "GROUP BY artist ORDER BY c DESC LIMIT ?",
-            (user_id, limit),
-        ).fetchall()
-    finally:
-        conn.close()
-    return [r[0] for r in rows]
+    rows = _query(
+        "SELECT artist, COUNT(*) AS c FROM track_feedback "
+        "WHERE user_id = :uid AND LOWER(feedback) = 'like' AND artist IS NOT NULL "
+        "GROUP BY artist ORDER BY c DESC LIMIT :lim",
+        {"uid": user_id, "lim": limit},
+    )
+    return [r["artist"] for r in rows]
 
 
 if __name__ == "__main__":
     init_db()
     init_track_feedback()
     init_users()
-    print("Database initialised at", DB_PATH)
-    # quick self-test
+    print("Database initialised. Backend:", "Postgres" if _IS_PG else "SQLite")
     sid = new_session_id()
     save_session(sid, "Focus", ["Radiohead"], [{"name": "Test", "artist": "X"}],
                  5, 4, 5, "good")
