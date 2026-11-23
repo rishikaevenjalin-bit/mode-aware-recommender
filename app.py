@@ -147,18 +147,16 @@ def go_to(step):
 
 
 def account_bar():
-    """Signed-in indicator with links to the account page and manual log-out."""
+    """During a session, show only a small account button on the right.
+    Logging out lives on the account page and the end-of-session page,
+    so people don't log themselves out by accident mid-session."""
     if not st.session_state.get("user_id"):
         return
-    left, mid, right = st.columns([2.2, 1, 1])
-    with left:
-        st.caption(f"✦ Signed in as **{st.session_state.username}**")
-    with mid:
-        if st.button("My account", key="account_btn", use_container_width=True):
-            go_to("account")
+    spacer, right = st.columns([4, 1])
     with right:
-        if st.button("Log out", key="logout_btn", use_container_width=True):
-            do_logout()
+        if st.button("✦ Account", key=f"account_btn_{st.session_state.step}",
+                     use_container_width=True):
+            go_to("account")
 
 
 def generate_mix(chosen_artists, selected_mode, profile_artists=None):
@@ -274,6 +272,30 @@ elif st.session_state.step == "auth":
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        """
+        <style>
+        /* Pink-purple Create account button */
+        .st-key-signup_box button[kind="primaryFormSubmit"]{
+            background: linear-gradient(135deg, #C77DFF 0%, #E86BB0 100%) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 10px 24px rgba(199,125,255,0.30) !important;
+        }
+        .st-key-signup_box button[kind="primaryFormSubmit"]:hover{
+            background: linear-gradient(135deg, #B566F0 0%, #E05AA3 100%) !important;
+            color: #ffffff !important;
+            transform: translateY(-2px);
+        }
+        .st-key-signup_box button[kind="primaryFormSubmit"] p{
+            color: #ffffff !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     tab_login, tab_signup = st.tabs(["Log in", "Create account"])
 
     with tab_login:
@@ -290,17 +312,18 @@ elif st.session_state.step == "auth":
                 st.session_state.username = lu.strip()
                 go_to("setup")
             else:
-                st.error("Incorrect username or password.")
+                st.error("User not found.")
 
     with tab_signup:
-        with st.form("signup_form", clear_on_submit=False):
-            su = st.text_input("Choose a username", key="signup_user",
-                               help="At least 3 characters.")
-            sp = st.text_input("Choose a password", type="password",
-                               key="signup_pass", help="At least 4 characters.")
-            created = st.form_submit_button(
-                "Create account  ♡", type="primary", use_container_width=True
-            )
+        with st.container(key="signup_box"):
+            with st.form("signup_form", clear_on_submit=False):
+                su = st.text_input("Choose a username", key="signup_user",
+                                   help="At least 3 characters.")
+                sp = st.text_input("Choose a password", type="password",
+                                   key="signup_pass", help="At least 4 characters.")
+                created = st.form_submit_button(
+                    "Create account  ♡", type="primary", use_container_width=True
+                )
         if created:
             ok, result = create_user(su, sp)
             if ok:
@@ -493,6 +516,8 @@ elif st.session_state.step == "results":
     set_page_style()
     mi.progress("results")
 
+    account_bar()
+
     mode = st.session_state.mode
     recommendations = st.session_state.recs or []
 
@@ -677,6 +702,8 @@ elif st.session_state.step == "feedback":
     set_page_style()
     mi.progress("feedback")
 
+    account_bar()
+
     mi.section_heading(
         "How did your mix feel?",
         "Your thoughts help us evaluate the recommendations.",
@@ -729,7 +756,8 @@ elif st.session_state.step == "feedback":
         )
 
         st.caption(
-            "Your feedback helps support the evaluation of MusicIntent."
+            "Your feedback helps support the evaluation of MusicIntent. "
+            "It's completely optional — feel free to skip."
         )
 
     st.markdown(
@@ -737,8 +765,8 @@ elif st.session_state.step == "feedback":
         unsafe_allow_html=True,
     )
 
-    # Feedback navigation.
-    back, spacer, submit = st.columns([1, 0.5, 1.5])
+    # Feedback navigation. Feedback is optional, so a skip is offered.
+    back, skip, submit = st.columns([1, 1, 1.5])
 
     with back:
         if st.button(
@@ -746,6 +774,14 @@ elif st.session_state.step == "feedback":
             use_container_width=True,
         ):
             go_to("results")
+
+    with skip:
+        if st.button(
+            "Skip for now",
+            use_container_width=True,
+            key="skip_feedback",
+        ):
+            go_to("done")
 
     with submit:
         if st.button(
@@ -809,6 +845,18 @@ elif st.session_state.step == "done":
             use_container_width=True,
         ):
             reset_session()
+
+    # Log out is offered here at the end of a session (and on the account
+    # page), but never during an active session.
+    if st.session_state.get("user_id"):
+        lo_left, lo_center, lo_right = st.columns([1, 1.8, 1])
+        with lo_center:
+            if st.button(
+                "Log out",
+                use_container_width=True,
+                key="done_logout",
+            ):
+                do_logout()
 
     render_footer()
 
