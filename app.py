@@ -147,16 +147,38 @@ def go_to(step):
 
 
 def account_bar():
-    """During a session, show only a small account button on the right.
-    Logging out lives on the account page and the end-of-session page,
-    so people don't log themselves out by accident mid-session."""
+    """During a session, show only a small "My Account" button on the right,
+    styled to match the pink-purple accent. Logging out lives on the account
+    page and the end-of-session page, so nobody logs out by accident."""
     if not st.session_state.get("user_id"):
         return
-    spacer, right = st.columns([4, 1])
+    st.markdown(
+        """
+        <style>
+        .st-key-acct_btn_box button{
+            background: linear-gradient(135deg,#C77DFF 0%,#E86BB0 100%) !important;
+            color:#ffffff !important;
+            border:none !important;
+            font-weight:700 !important;
+            border-radius:14px !important;
+            box-shadow:0 6px 16px rgba(199,125,255,0.28) !important;
+        }
+        .st-key-acct_btn_box button:hover{
+            background: linear-gradient(135deg,#B566F0 0%,#E05AA3 100%) !important;
+            color:#ffffff !important;
+        }
+        .st-key-acct_btn_box button p{ color:#ffffff !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    spacer, right = st.columns([3, 1.3])
     with right:
-        if st.button("✦ Account", key=f"account_btn_{st.session_state.step}",
-                     use_container_width=True):
-            go_to("account")
+        with st.container(key="acct_btn_box"):
+            if st.button("♡ My Account",
+                         key=f"account_btn_{st.session_state.step}",
+                         use_container_width=True):
+                go_to("account")
 
 
 def generate_mix(chosen_artists, selected_mode, profile_artists=None):
@@ -372,23 +394,36 @@ elif st.session_state.step == "setup":
             unsafe_allow_html=True,
         )
 
-    # Artist selection.
+    # Artist selection — the search box and the chosen artists are shown as
+    # two separate cards so they read as distinct areas.
     with st.container(border=True):
 
-        st.markdown("### ♡  Artists you already love")
+        st.markdown("### 🔍  Search for an artist")
+        st.caption("Find and add up to 5 artists you love.")
 
         chosen = st.multiselect(
             "Choose between 1 and 5 artists",
             options=artists,
             default=st.session_state.seed_artists,
             max_selections=5,
-            placeholder="Search for an artist...",
+            placeholder="Type an artist's name...",
             label_visibility="collapsed",
             key="artist_select",
         )
 
-        if chosen:
-            st.caption(f"✦ {len(chosen)} of 5 selected")
+    # Separate card: the artists you've picked so far.
+    if chosen:
+        pills = "".join(
+            f"<span class='mi-love-pill'>♡ {mi._e(a)}</span>" for a in chosen
+        )
+        st.markdown(
+            f"<div class='mi-love-card'>"
+            f"<div class='mi-love-title'>♡ Artists you already love"
+            f"&nbsp;<span style='color:#B23A77;font-weight:600;font-size:0.82rem'>"
+            f"· {len(chosen)} of 5</span></div>"
+            f"<div class='mi-love-pills'>{pills}</div></div>",
+            unsafe_allow_html=True,
+        )
 
     # Listening intention — the mood boxes themselves are clickable.
     mi.section_heading(
