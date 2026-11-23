@@ -513,18 +513,18 @@ elif st.session_state.step == "setup":
             background:linear-gradient(135deg,#F5F2FF 0%,#ECF1FF 100%);
         }
         div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]{
-            background:linear-gradient(135deg,#FFF5EF 0%,#FFEEF5 100%);
-            border-color:#FFE6EE;
+            background:linear-gradient(135deg,#FFFBF8 0%,#FFF6FA 100%);
+            border-color:#FFEEF4;
         }
         div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#FFEDE2 0%,#FFE2EE 100%);
+            background:linear-gradient(135deg,#FFF5EF 0%,#FFEFF6 100%);
         }
         div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]{
-            background:linear-gradient(135deg,#EFFBF6 0%,#F1F6FF 100%);
-            border-color:#E3F3EC;
+            background:linear-gradient(135deg,#F7FDFB 0%,#F6FAFF 100%);
+            border-color:#EAF6F0;
         }
         div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#E6F7F0 0%,#E9F1FF 100%);
+            background:linear-gradient(135deg,#F0FAF6 0%,#EFF5FF 100%);
         }
         </style>
         """,
