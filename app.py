@@ -37,9 +37,17 @@ st.set_page_config(
 # ── Research database ──────────────────────────────────────────────────────
 
 # Preserve anonymous research logging and track-level feedback.
-init_db()
-init_track_feedback()
-init_users()
+# Create the tables once per process (cached), rather than on every rerun,
+# so each interaction does not make a round-trip to the database.
+@st.cache_resource
+def _init_database():
+    init_db()
+    init_track_feedback()
+    init_users()
+    return True
+
+
+_init_database()
 
 
 # ── Data and recommendation configuration ──────────────────────────────────
