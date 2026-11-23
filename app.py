@@ -159,23 +159,27 @@ def account_bar():
             background: linear-gradient(135deg,#C77DFF 0%,#E86BB0 100%) !important;
             color:#ffffff !important;
             border:none !important;
-            font-weight:700 !important;
-            border-radius:14px !important;
-            box-shadow:0 6px 16px rgba(199,125,255,0.28) !important;
+            font-weight:600 !important;
+            border-radius:12px !important;
+            min-height:0 !important;
+            padding:4px 10px !important;
+            font-size:0.80rem !important;
+            white-space:nowrap !important;
+            box-shadow:0 4px 12px rgba(199,125,255,0.25) !important;
         }
         .st-key-acct_btn_box button:hover{
             background: linear-gradient(135deg,#B566F0 0%,#E05AA3 100%) !important;
             color:#ffffff !important;
         }
-        .st-key-acct_btn_box button p{ color:#ffffff !important; }
+        .st-key-acct_btn_box button p{ color:#ffffff !important; margin:0 !important; }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    spacer, right = st.columns([3, 1.3])
+    spacer, right = st.columns([4.5, 1.2])
     with right:
         with st.container(key="acct_btn_box"):
-            if st.button("♡ My Account",
+            if st.button("My Account ♡",
                          key=f"account_btn_{st.session_state.step}",
                          use_container_width=True):
                 go_to("account")
@@ -313,6 +317,22 @@ elif st.session_state.step == "auth":
         .st-key-signup_box button[kind="primaryFormSubmit"] p{
             color: #ffffff !important;
         }
+        /* Lavender-purple Log in button */
+        .st-key-login_box button[kind="primaryFormSubmit"]{
+            background: linear-gradient(135deg, #8E7CE6 0%, #B08BE8 100%) !important;
+            border: none !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 10px 24px rgba(142,124,230,0.30) !important;
+        }
+        .st-key-login_box button[kind="primaryFormSubmit"]:hover{
+            background: linear-gradient(135deg, #7B68DE 0%, #A079E3 100%) !important;
+            color: #ffffff !important;
+            transform: translateY(-2px);
+        }
+        .st-key-login_box button[kind="primaryFormSubmit"] p{
+            color: #ffffff !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -321,12 +341,13 @@ elif st.session_state.step == "auth":
     tab_login, tab_signup = st.tabs(["Log in", "Create account"])
 
     with tab_login:
-        with st.form("login_form", clear_on_submit=False):
-            lu = st.text_input("Username", key="login_user")
-            lp = st.text_input("Password", type="password", key="login_pass")
-            submitted = st.form_submit_button(
-                "Log in  ✦", type="primary", use_container_width=True
-            )
+        with st.container(key="login_box"):
+            with st.form("login_form", clear_on_submit=False):
+                lu = st.text_input("Username", key="login_user")
+                lp = st.text_input("Password", type="password", key="login_pass")
+                submitted = st.form_submit_button(
+                    "Log in  ✦", type="primary", use_container_width=True
+                )
         if submitted:
             uid = authenticate(lu, lp)
             if uid:
@@ -396,7 +417,7 @@ elif st.session_state.step == "setup":
 
     # Artist selection — the search box and the chosen artists are shown as
     # two separate cards so they read as distinct areas.
-    with st.container(border=True):
+    with st.container(border=True, key="search_box"):
 
         st.markdown("### 🔍  Search for an artist")
         st.caption("Find and add up to 5 artists you love.")
@@ -439,9 +460,9 @@ elif st.session_state.step == "setup":
         div[data-testid="stButton"] button[kind="primary"]{
             min-height: 132px;
             border-radius: 24px;
-            border: 1px solid #ffffff;
-            background: #FFFFFFA6;
-            box-shadow: 0 10px 30px #796BA512;
+            border: 1px solid #FFE0EC;
+            background: linear-gradient(135deg,#FFF1F6 0%,#FFE8DA 100%);
+            box-shadow: 0 10px 30px rgba(232,107,176,0.10);
             color: #302A50;
             font-size: 1.12rem;
             font-weight: 700;
@@ -452,20 +473,62 @@ elif st.session_state.step == "setup":
         }
         div[data-testid="stButton"] button[kind="primary"]:hover{
             transform: translateY(-6px);
-            box-shadow: 0 19px 38px #796BA526;
-            border-color: #ffffff;
-            background: #FFFFFFD8;
+            box-shadow: 0 19px 40px rgba(232,107,176,0.20);
+            border-color: #FFD0E0;
+            background: linear-gradient(135deg,#FFE6F0 0%,#FFDCC8 100%);
             color: #302A50;
         }
         div[data-testid="stButton"] button[kind="primary"]:focus:not(:active){
-            border-color: #9186E9;
+            border-color: #E86BB0;
             color: #302A50;
         }
         div[data-testid="stButton"] button[kind="primary"] p{
-            font-size: .76rem; font-weight: 500; color: #8883A1; margin: 0;
+            font-size: .76rem; font-weight: 500; color: #8A7486; margin: 0;
         }
         div[data-testid="stButton"] button[kind="primary"] p::first-line{
             font-size: 1.15rem; font-weight: 700; color: #302A50;
+        }
+        /* Loved-artists card (separate from the search box) */
+        .mi-love-card{
+            margin-top:14px;padding:16px 18px;border-radius:20px;
+            background:linear-gradient(135deg,#FFF1F6 0%,#FFE8DA 100%);
+            border:1px solid #FFE0EC;
+            box-shadow:0 8px 22px rgba(232,107,176,0.10);
+        }
+        .mi-love-title{font-weight:700;color:#302A50;margin-bottom:10px;font-size:0.98rem;}
+        .mi-love-pills{display:flex;flex-wrap:wrap;gap:8px;}
+        .mi-love-pill{
+            background:#ffffff;border:1px solid #FFC9DE;color:#B23A77;
+            padding:6px 14px;border-radius:999px;font-size:0.85rem;font-weight:600;
+            box-shadow:0 3px 8px rgba(232,107,176,0.12);
+        }
+        /* Search-for-an-artist card (lavender, distinct from the loved card) */
+        .st-key-search_box{
+            background:linear-gradient(135deg,#F3F0FF 0%,#EAF2FF 100%) !important;
+            border:1px solid #E3DBFF !important;
+            border-radius:20px !important;
+        }
+        /* Per-mode pastel gradient shades */
+        div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]{
+            background:linear-gradient(135deg,#EDE9FF 0%,#DCE6FF 100%);
+            border-color:#DED6FF;
+        }
+        div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]:hover{
+            background:linear-gradient(135deg,#E3DCFF 0%,#CFDDFF 100%);
+        }
+        div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]{
+            background:linear-gradient(135deg,#FFEDE3 0%,#FFE0EC 100%);
+            border-color:#FFD8E6;
+        }
+        div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]:hover{
+            background:linear-gradient(135deg,#FFE2D4 0%,#FFD3E3 100%);
+        }
+        div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]{
+            background:linear-gradient(135deg,#E2F6EE 0%,#E6EEFF 100%);
+            border-color:#D5EEE4;
+        }
+        div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]:hover{
+            background:linear-gradient(135deg,#D6F0E6 0%,#DAE7FF 100%);
         }
         </style>
         """,
@@ -709,8 +772,8 @@ elif st.session_state.step == "results":
             unsafe_allow_html=True,
         )
 
-        # Results navigation.
-        left, spacer, right = st.columns([1, 0.5, 1.5])
+        # Results navigation. At the end of a session you can rate it or end it.
+        left, mid, right = st.columns([1, 1, 1.4])
 
         with left:
             if st.button(
@@ -719,9 +782,17 @@ elif st.session_state.step == "results":
             ):
                 go_to("setup")
 
+        with mid:
+            if st.button(
+                "End session",
+                use_container_width=True,
+                key="end_session",
+            ):
+                go_to("done")
+
         with right:
             if st.button(
-                "Rate this mix  ✧",
+                "Rate session  ✧",
                 type="primary",
                 use_container_width=True,
             ):
