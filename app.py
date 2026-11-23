@@ -494,8 +494,8 @@ elif st.session_state.step == "setup":
         /* Search-for-an-artist card (lavender, distinct from the loved card) */
         .st-key-search_box,
         .st-key-search_box div[data-testid="stVerticalBlockBorderWrapper"]{
-            background:#EEC7F0 !important;
-            border:1px solid #E3B4E6 !important;
+            background:#FEDEFF !important;
+            border:1px solid #F3C8F5 !important;
             border-radius:20px !important;
         }
         /* Separate color for the search bar itself */
