@@ -29,12 +29,20 @@ def _database_url():
 def _make_engine():
     url = _database_url()
     if url:
+        # Use the pure-Python pg8000 driver (works on any Python version,
+        # including 3.14 where psycopg2 has no wheel).
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
+        if url.startswith("postgresql://") and "+pg8000" not in url:
+            url = url.replace("postgresql://", "postgresql+pg8000://", 1)
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         return create_engine(
             url,
             poolclass=NullPool,           # safe with Supabase transaction pooler
-            connect_args={"sslmode": "require"},
+            connect_args={"ssl_context": ctx},
         )
     return create_engine("sqlite:///music_rec.db")
 

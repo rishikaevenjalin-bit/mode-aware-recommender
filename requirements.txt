@@ -5,4 +5,4 @@ scikit-learn
 google-genai
 python-dotenv
 sqlalchemy
-psycopg2-binary
+pg8000
