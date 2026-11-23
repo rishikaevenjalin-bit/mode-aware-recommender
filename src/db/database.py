@@ -29,20 +29,17 @@ def _database_url():
 def _make_engine():
     url = _database_url()
     if url:
-        # Use the pure-Python pg8000 driver (works on any Python version,
-        # including 3.14 where psycopg2 has no wheel).
+        # Force the psycopg2 driver explicitly. SQLAlchemy 2.1 defaults the bare
+        # postgresql:// scheme to psycopg (v3), which is not installed, and
+        # psycopg2 authenticates reliably against the Supabase pooler.
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
-        if url.startswith("postgresql://") and "+pg8000" not in url:
-            url = url.replace("postgresql://", "postgresql+pg8000://", 1)
-        import ssl
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        if url.startswith("postgresql://") and "+psycopg2" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
         return create_engine(
             url,
             poolclass=NullPool,           # safe with Supabase transaction pooler
-            connect_args={"ssl_context": ctx},
+            connect_args={"sslmode": "require"},
         )
     return create_engine("sqlite:///music_rec.db")
 
