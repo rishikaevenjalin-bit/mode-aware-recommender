@@ -432,19 +432,8 @@ elif st.session_state.step == "setup":
             key="artist_select",
         )
 
-    # Separate card: the artists you've picked so far.
-    if chosen:
-        pills = "".join(
-            f"<span class='mi-love-pill'>♡ {mi._e(a)}</span>" for a in chosen
-        )
-        st.markdown(
-            f"<div class='mi-love-card'>"
-            f"<div class='mi-love-title'>♡ Artists you already love"
-            f"&nbsp;<span style='color:#B23A77;font-weight:600;font-size:0.82rem'>"
-            f"· {len(chosen)} of 5</span></div>"
-            f"<div class='mi-love-pills'>{pills}</div></div>",
-            unsafe_allow_html=True,
-        )
+        if chosen:
+            st.caption(f"✦ {len(chosen)} of 5 selected")
 
     # Listening intention — the mood boxes themselves are clickable.
     mi.section_heading(
@@ -504,9 +493,15 @@ elif st.session_state.step == "setup":
         }
         /* Search-for-an-artist card (lavender, distinct from the loved card) */
         .st-key-search_box{
-            background:linear-gradient(135deg,#F3F0FF 0%,#EAF2FF 100%) !important;
-            border:1px solid #E3DBFF !important;
+            background:linear-gradient(135deg,#FFF3EC 0%,#FFEFF6 100%) !important;
+            border:1px solid #FFE0D9 !important;
             border-radius:20px !important;
+        }
+        /* Separate color for the search bar itself */
+        .st-key-search_box [data-baseweb="select"] > div{
+            background:#F1ECFF !important;
+            border-color:#DAD0FF !important;
+            border-radius:12px !important;
         }
         /* Per-mode pastel gradient shades */
         div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]{
@@ -952,8 +947,17 @@ elif st.session_state.step == "done":
         ):
             reset_session()
 
-    # Log out is offered here at the end of a session (and on the account
-    # page), but never during an active session.
+    # End-of-session actions: end the session (back to the welcome screen),
+    # plus log out for signed-in users. Log out is never shown mid-session.
+    es_left, es_center, es_right = st.columns([1, 1.8, 1])
+    with es_center:
+        if st.button(
+            "End session",
+            use_container_width=True,
+            key="done_end_session",
+        ):
+            go_to("intro")
+
     if st.session_state.get("user_id"):
         lo_left, lo_center, lo_right = st.columns([1, 1.8, 1])
         with lo_center:
