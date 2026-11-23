@@ -492,9 +492,10 @@ elif st.session_state.step == "setup":
             box-shadow:0 3px 8px rgba(232,107,176,0.12);
         }
         /* Search-for-an-artist card (lavender, distinct from the loved card) */
-        .st-key-search_box{
-            background:linear-gradient(135deg,#FFF3EC 0%,#FFEFF6 100%) !important;
-            border:1px solid #FFE0D9 !important;
+        .st-key-search_box,
+        .st-key-search_box div[data-testid="stVerticalBlockBorderWrapper"]{
+            background:linear-gradient(135deg,#FFD9E7 0%,#FFC6DC 100%) !important;
+            border:1px solid #FFB8D2 !important;
             border-radius:20px !important;
         }
         /* Separate color for the search bar itself */
@@ -505,11 +506,11 @@ elif st.session_state.step == "setup":
         }
         /* Per-mode pastel gradient shades */
         div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]{
-            background:linear-gradient(135deg,#F6F3FF 0%,#EDF2FF 100%);
-            border-color:#ECE6FF;
+            background:linear-gradient(135deg,#FBFAFF 0%,#F4F7FF 100%);
+            border-color:#F0ECFF;
         }
         div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#EFEAFF 0%,#E2EBFF 100%);
+            background:linear-gradient(135deg,#F5F2FF 0%,#ECF1FF 100%);
         }
         div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]{
             background:linear-gradient(135deg,#FFF5EF 0%,#FFEEF5 100%);
