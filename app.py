@@ -505,25 +505,25 @@ elif st.session_state.step == "setup":
         }
         /* Per-mode pastel gradient shades */
         div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]{
-            background:linear-gradient(135deg,#EDE9FF 0%,#DCE6FF 100%);
-            border-color:#DED6FF;
+            background:linear-gradient(135deg,#F6F3FF 0%,#EDF2FF 100%);
+            border-color:#ECE6FF;
         }
         div[data-testid="stButton"].st-key-pick_focus button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#E3DCFF 0%,#CFDDFF 100%);
+            background:linear-gradient(135deg,#EFEAFF 0%,#E2EBFF 100%);
         }
         div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]{
-            background:linear-gradient(135deg,#FFEDE3 0%,#FFE0EC 100%);
-            border-color:#FFD8E6;
+            background:linear-gradient(135deg,#FFF5EF 0%,#FFEEF5 100%);
+            border-color:#FFE6EE;
         }
         div[data-testid="stButton"].st-key-pick_energy button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#FFE2D4 0%,#FFD3E3 100%);
+            background:linear-gradient(135deg,#FFEDE2 0%,#FFE2EE 100%);
         }
         div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]{
-            background:linear-gradient(135deg,#E2F6EE 0%,#E6EEFF 100%);
-            border-color:#D5EEE4;
+            background:linear-gradient(135deg,#EFFBF6 0%,#F1F6FF 100%);
+            border-color:#E3F3EC;
         }
         div[data-testid="stButton"].st-key-pick_inspiration button[kind="primary"]:hover{
-            background:linear-gradient(135deg,#D6F0E6 0%,#DAE7FF 100%);
+            background:linear-gradient(135deg,#E6F7F0 0%,#E9F1FF 100%);
         }
         </style>
         """,
